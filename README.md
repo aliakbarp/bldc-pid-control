@@ -1,5 +1,5 @@
 ##AVR Programming using avr-gcc
-This directory is for saving my final project code and learning make a avr microcontroller program using avr-gcc. Every folder contains **README** for code explanation, and a **Makefile** for compiling code. In **Makefile** I use ATMega328, 16MHz clock frequency, and USBTiny programmer.
+This is BLDC (Brushless DC) motor PID control system program. I am using ESC, so I just need to send a high pulse (between 1 ms to 2 ms) in a signal which has 20 ms period. It is similar to servo driving pulse. In **Makefile** I use ATMega328P, 16MHz clock frequency, and USBTiny programmer. That is spec for Arduino UNO, so it is easier for me to switch framework between Arduino IDE and avr-gcc. 
 
 ##Building program with Makefile
 Compiling program
