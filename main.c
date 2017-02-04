@@ -13,12 +13,42 @@ cli();
 timer_init();
 lcd_init();
 bldc_init();
+uart_init( UART_BAUD_SELECT(UART_BAUD_RATE,F_CPU) ); 
 // enable global interrupt
 sei();
-get_rawdata = true;
+get_rawrpm = true;
 
 	while(1){
-		if(get_rawdata){
+		// Get data from UART
+		c = (uint16_t) uart_getc();
+		
+		// Check data from UART
+        if ( c & UART_NO_DATA ){
+            /* 
+             * no data available from UART 
+             */
+        }
+        else{
+            if ( c & UART_FRAME_ERROR ){
+                uart_puts_P("UART Frame Error: ");
+            }
+            if ( c & UART_OVERRUN_ERROR ){
+                uart_puts_P("UART Overrun Error: ");
+            }
+            if ( c & UART_BUFFER_OVERFLOW ){
+                uart_puts_P("Buffer overflow error: ");
+            }
+            // Copy data from UART to array 'line'
+			if(c!=10 & c!=13) line[i] = c;
+            i++;
+            if(c == 10){
+				// Get rpm_desired
+				desired_rpm = atof(line);
+				i = 0;
+			}
+		}
+		
+		if(get_rawrpm){
 			timer0_counting = 0;
 			timer2_overflow = 0;
 			timer2_counting = 0;
@@ -27,7 +57,7 @@ get_rawdata = true;
 			timer2_overflow_temp = timer2_overflow;
 			timer0_temp = timer0_counting;
 			get_rpm = true;
-			get_rawdata = false;
+			get_rawrpm = false;
 		}
 		if(get_rpm){
 			// get total counting for TIMER2
@@ -49,7 +79,7 @@ get_rawdata = true;
 		}
 		if(display){
 			lcd_display(0, 0, buffer);
-			get_rawdata = true;
+			get_rawrpm = true;
 			display = false;
 		}
 		// if BLDC stop rotating for some times, init again
