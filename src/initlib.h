@@ -20,8 +20,8 @@
 #define rotation_sampling 5
 // TCNT0 limit, the max is 255 (8bit, start from 0)
 #define timer0_counting_limit (4*rotation_sampling)
-#define UART_BAUD_RATE 9600
-#define UART_BUFFER 10
+//#define UART_BAUD_RATE 9600
+//#define UART_BUFFER 10
 
 uint32_t timer2_overflow = 0;
 char buffer[33];
@@ -29,13 +29,14 @@ bool get_rawrpm = false;
 bool get_rpm = false;
 bool display = false;
 bool set_pid = false;
+bool getting_data = false;
 double sampling_time = 0;
 double error = 0, last_error = 0;
-double rpm = 0;
+double rpm = 1000, last_rpm = 0;
 double desired_rpm = 7000;
 double timer2_overflow_temp = 0;
 uint16_t timer0_temp = 0, timer2_temp = 0;
 uint16_t c = 0;
-char line[UART_BUFFER];
+//char line[UART_BUFFER];
 uint16_t i = 0;
 bool get_rpm_from_uart = false;
