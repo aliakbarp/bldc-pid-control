@@ -39,6 +39,10 @@ LICENSE:
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "uart.h"
 
 
@@ -369,7 +373,10 @@ Purpose:  called when the UART has received a character
     unsigned char data;
     unsigned char usr;
     unsigned char lastRxError;
- 
+    extern unsigned char line[10];
+    extern unsigned int i;
+	extern bool serial_complete;
+	extern double desired_rpm;
  
     /* read UART status register and UART data register */
     usr  = UART0_STATUS;
@@ -398,6 +405,21 @@ Purpose:  called when the UART has received a character
         /* store received data in buffer */
         UART_RxBuf[tmphead] = data;
     }
+
+	if(data != 10){
+		if(data >= 48){
+			line[i] = data;
+			i++;
+		}
+	} else {
+		desired_rpm = atof(line);
+		for(int g=0; g<10; g++){
+			line[g] = 0;
+		}
+		serial_complete = true;
+		i = 0;
+	}
+	
     UART_LastRxError |= lastRxError;   
 }
 
