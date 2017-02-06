@@ -6,15 +6,7 @@
  ***********************************/
 
 #include <src/initlib.h> 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <src/uart.h>
 
-#define UART_BAUD_RATE 9600
-
-unsigned char line[10];
-unsigned char arr[10];
 
 int main(void){
 	// disable global interrupt
@@ -27,13 +19,8 @@ int main(void){
 	sei();
 	get_rawrpm = true;
 	while(1){
-		// Get data from UART
-		//snprintf(arr, sizeof(desired_rpm)+3, "%.0f", desired_rpm);
-		//for(int g=0; g<strlen(arr); g++){
-			//Send back to terminal
-			//uart_putc((uint8_t)arr[g]);
-		//}		
-		//uart_putc(10);
+		// Getting data desired_rpm automatically
+		// from UART RX interrupt
 		
 		if(get_rawrpm){
 			timer0_counting = 0;
@@ -54,6 +41,8 @@ int main(void){
 			sampling_time = (double) sampling_time * 6.25E-5/(rotation_sampling);
 			// convert to rpm
 			rpm = (double) 60E3/sampling_time;
+			// calibration factor
+			rpm = ( 1.0171 * rpm ) + 34.387;
 			sprintf(buffer, "%.0f rpm", rpm);
 			set_pid = true;
 			get_rpm = false;
@@ -88,5 +77,4 @@ int main(void){
 		
 		
 	}
-	//_delay_ms(500);
 }

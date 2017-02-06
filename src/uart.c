@@ -416,7 +416,6 @@ Purpose:  called when the UART has received a character
 		for(int g=0; g<10; g++){
 			line[g] = 0;
 		}
-		serial_complete = true;
 		i = 0;
 	}
 	
