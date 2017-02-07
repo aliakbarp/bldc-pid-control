@@ -13,7 +13,6 @@
 
 void lcd_display(uint8_t x, uint8_t y, char buffer[33]){
 	#if defined NEED_LCD
-		lcd_clrscr();
 		lcd_gotoxy(x, y);
 		lcd_puts(buffer);
 	#endif
@@ -21,12 +20,34 @@ void lcd_display(uint8_t x, uint8_t y, char buffer[33]){
 
 void serial_display(double rpm){
 	#if defined NEED_SERIAL
-		char arr[10]="";
-		snprintf(arr, sizeof(rpm), "%.0f", rpm);
-		for(int g=0; g<sizeof(arr)+3; g++){
+		unsigned char arr[10];
+		snprintf(arr, sizeof(rpm)+3, "%.3f", rpm);
+		for(int g=0; g<strlen(arr); g++){
 			//Send back to terminal
 			uart_putc((uint8_t)arr[g]);
 		}
+	#endif
+}
+
+void serial_rpm(double rpm, double hertz){
+	#if defined NEED_SERIAL
+		unsigned char arr[10];
+		snprintf(arr, sizeof(rpm)+3, "%.2f", rpm);
+		for(int g=0; g<strlen(arr); g++){
+			//Send back to terminal
+			uart_putc((uint8_t)arr[g]);
+		}
+		uart_putc(32);
+		uart_puts_P("rpm");
+		uart_putc(9);
+		//uart_putc("#");
+		snprintf(arr, sizeof(hertz)+3, "%.2f", hertz);
+		for(int g=0; g<strlen(arr); g++){
+			//Send back to terminal
+			uart_putc((uint8_t)arr[g]);
+		}
+		uart_putc(32);
+		uart_puts_P("Hz");
 		uart_putc(10);
 	#endif
 }

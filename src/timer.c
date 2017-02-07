@@ -3,7 +3,7 @@
  * Using for :
  * Generate pulse to BLDC (using TIMER1)
  * Counting BLDC rotation (using TIMER0)
- * Counting BLDC rpm (using TIMER2)
+ * Counting BLDC rotation time (using TIMER2)
  * Make delay function
  * 
  * Created by aliakbarp
@@ -53,11 +53,11 @@ void bldc_init(void){
 	TCNT0 = 0;
 	while(TCNT0 <= 32){
 		OCR1B = 1000;
-		millisec(1500);
+		millisec(1000);
 		uint16_t g;
-		for(g=1500; g<3500; g+=100){
+		for(g=1500; g<3000; g+=100){
 			OCR1B = g;
-			millisec(1000);
+			millisec(500);
 		}
 	}
 }

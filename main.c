@@ -23,6 +23,19 @@ int main(void){
 		// from UART RX interrupt
 		
 		if(get_rawrpm){
+			#if defined NEED_TIME_STAMP
+				timer2_temp = timer2_counting;
+				timer2_overflow_temp = timer2_overflow;
+				// Get total counting for TIMER2
+				time_stamp = (double) timer2_overflow_temp * 256 + (double)timer2_temp;
+				// convert TIMER2 count to millisecond
+				time_stamp = (double) time_stamp * 6.25E-5;				
+				//serial_rpm(rpm, time_stamp);
+				serial_display(rpm);
+				uart_putc(32);
+				serial_display(time_stamp);
+				uart_putc(10);
+			#endif
 			timer0_counting = 0;
 			timer2_overflow = 0;
 			timer2_counting = 0;
@@ -41,9 +54,10 @@ int main(void){
 			sampling_time = (double) sampling_time * 6.25E-5/(rotation_sampling);
 			// convert to rpm
 			rpm = (double) 60E3/sampling_time;
+			// Get hertz (1 rot = 4 Hz)
+			hertz = 4 * (rpm/60);
 			// calibration factor
 			rpm = ( 1.0171 * rpm ) + 34.387;
-			sprintf(buffer, "%.0f rpm", rpm);
 			set_pid = true;
 			get_rpm = false;
 		}
@@ -55,15 +69,14 @@ int main(void){
 			set_pid = false;
 		}
 		if(display){
-			lcd_display(0, 0, buffer);
-			if(j>=50){
-				unsigned char arr[10];
-				snprintf(arr, sizeof(rpm)+3, "%.0f", rpm);
-				for(int g=0; g<strlen(arr); g++){
-					//Send back to terminal
-					uart_putc((uint8_t)arr[g]);
-				}
+			if(j>=30){
+				serial_display(hertz);
 				uart_putc(10);
+				lcd_clrscr();
+				sprintf(buffer, "%.0f rpm       ", rpm);
+				lcd_display(0, 0, buffer);
+				sprintf(buffer, "%.0f Hertz      ", hertz);
+				lcd_display(0, 1, buffer);
 				j = 0;
 			}
 			get_rawrpm = true;
