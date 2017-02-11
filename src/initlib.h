@@ -32,7 +32,7 @@ bool set_pid = false;
 double sampling_time = 0;
 double error = 0, last_error = 0;
 double rpm = 1000, last_rpm = 0;
-double desired_rpm = 7000;
+double desired_rpm = 4000;
 double timer2_overflow_temp = 0;
 double time_stamp = 0;
 double hertz = 0;

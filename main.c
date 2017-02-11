@@ -7,6 +7,7 @@
 
 #include <src/initlib.h> 
 
+#define NEED_TIME_STAMP
 
 int main(void){
 	// disable global interrupt
@@ -29,11 +30,15 @@ int main(void){
 				// Get total counting for TIMER2
 				time_stamp = (double) timer2_overflow_temp * 256 + (double)timer2_temp;
 				// convert TIMER2 count to millisecond
-				time_stamp = (double) time_stamp * 6.25E-5;				
+				time_stamp = (double) time_stamp * 6.25E-5;	
+				// Get millisecond based on calibration with ms reference
+				time_stamp = (double) 0.9531 * time_stamp + (double) 0.0187;			
 				//serial_rpm(rpm, time_stamp);
+				serial_display(time_stamp);
+				uart_putc(32);
 				serial_display(rpm);
 				uart_putc(32);
-				serial_display(time_stamp);
+				serial_display(desired_rpm);
 				uart_putc(10);
 			#endif
 			timer0_counting = 0;
@@ -52,12 +57,13 @@ int main(void){
 			sampling_time = (double) timer2_overflow_temp * 256 + (double)timer2_temp;
 			// convert TIMER2 count to millisecond, for each rotation
 			sampling_time = (double) sampling_time * 6.25E-5/(rotation_sampling);
+			// Get millisecond based on calibration with ms reference
+			sampling_time = (double) 0.9531 * sampling_time + (double) 0.0187;
 			// convert to rpm
 			rpm = (double) 60E3/sampling_time;
 			// Get hertz (1 rot = 4 Hz)
 			hertz = 4 * (rpm/60);
 			// calibration factor
-			rpm = ( 1.0171 * rpm ) + 34.387;
 			set_pid = true;
 			get_rpm = false;
 		}
@@ -69,19 +75,19 @@ int main(void){
 			set_pid = false;
 		}
 		if(display){
-			if(j>=30){
-				serial_display(hertz);
-				uart_putc(10);
-				lcd_clrscr();
-				sprintf(buffer, "%.0f rpm       ", rpm);
-				lcd_display(0, 0, buffer);
-				sprintf(buffer, "%.0f Hertz      ", hertz);
-				lcd_display(0, 1, buffer);
-				j = 0;
-			}
+			//if(j>=1){
+			//	serial_display(hertz);
+			//	uart_putc(10);
+			//	lcd_clrscr();
+			//	sprintf(buffer, "%.0f rpm       ", rpm);
+			//	lcd_display(0, 0, buffer);
+			//	sprintf(buffer, "%.0f Hertz      ", hertz);
+			//	lcd_display(0, 1, buffer);
+			//	j = 0;
+			//}
 			get_rawrpm = true;
 			display = false;
-			j++;
+			//j++;
 		}
 		// if BLDC stop rotating for some times, init again
 		if((timer2_overflow/100) >= 2000){
