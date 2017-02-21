@@ -37,7 +37,7 @@ void timer1_init(void){
 
 void timer2_init(void){
 	// No prescalling
-	TCCR2B|=(1<<CS20);
+	TCCR2B|=(1<<CS21);
 	// Enable overflow interrupt 
 	TIMSK2|=(1<<TOIE2);
 }
@@ -55,11 +55,11 @@ void bldc_init(void){
 		OCR1B = 1000;
 		millisec(1000);
 		uint16_t g;
-		for(g=1500; g<2300; g+=100){
+		for(g=1500; g<2200; g+=100){
 			OCR1B = g;
 			millisec(600);
 		}
-		for(g=2300; g>1900; g-=100){
+		for(g=2200; g>2080; g-=100){
 			OCR1B = g;
 			millisec(600);
 		}

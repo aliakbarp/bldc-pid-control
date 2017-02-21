@@ -14,7 +14,7 @@ ISR(TIMER0_OVF_vect){
 
 // TIMER 2 overflow interrupt function
 ISR(TIMER2_OVF_vect){
-	extern uint32_t timer2_overflow;
+	extern double timer2_overflow;
 	timer2_overflow++;
 	TIFR2=0x00;
 }

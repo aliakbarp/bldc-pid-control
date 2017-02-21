@@ -1,0 +1,1342 @@
+   1               		.file	"hd44780.c"
+   2               	__SP_H__ = 0x3e
+   3               	__SP_L__ = 0x3d
+   4               	__SREG__ = 0x3f
+   5               	__tmp_reg__ = 0
+   6               	__zero_reg__ = 1
+   7               		.text
+   8               	.Ltext0:
+   9               		.cfi_sections	.debug_frame
+  11               	lcd_e_port_low:
+  12               	.LFB1:
+  13               		.file 1 "src/hd44780.c"
+   1:src/hd44780.c **** /*****************************************************************************
+   2:src/hd44780.c **** Title  :   HD44780 Library
+   3:src/hd44780.c **** Author :   SA Development
+   4:src/hd44780.c **** Version:   1.11
+   5:src/hd44780.c **** *****************************************************************************/
+   6:src/hd44780.c **** 
+   7:src/hd44780.c **** #include "avr/pgmspace.h"
+   8:src/hd44780.c **** #include "hd44780.h"
+   9:src/hd44780.c **** #include "avr/sfr_defs.h"
+  10:src/hd44780.c **** #if (USE_ADELAY_LIBRARY==1)
+  11:src/hd44780.c ****   #include "adelay.h"
+  12:src/hd44780.c **** #else
+  13:src/hd44780.c ****   #define Delay_ns(__ns) \
+  14:src/hd44780.c ****     if((unsigned long) (F_CPU/1000000000.0 * __ns) != F_CPU/1000000000.0 * __ns)\
+  15:src/hd44780.c ****           __builtin_avr_delay_cycles((unsigned long) ( F_CPU/1000000000.0 * __ns)+1);\
+  16:src/hd44780.c ****     else __builtin_avr_delay_cycles((unsigned long) ( F_CPU/1000000000.0 * __ns))
+  17:src/hd44780.c ****   #define Delay_us(__us) \
+  18:src/hd44780.c ****     if((unsigned long) (F_CPU/1000000.0 * __us) != F_CPU/1000000.0 * __us)\
+  19:src/hd44780.c ****           __builtin_avr_delay_cycles((unsigned long) ( F_CPU/1000000.0 * __us)+1);\
+  20:src/hd44780.c ****     else __builtin_avr_delay_cycles((unsigned long) ( F_CPU/1000000.0 * __us))
+  21:src/hd44780.c ****   #define Delay_ms(__ms) \
+  22:src/hd44780.c ****     if((unsigned long) (F_CPU/1000.0 * __ms) != F_CPU/1000.0 * __ms)\
+  23:src/hd44780.c ****           __builtin_avr_delay_cycles((unsigned long) ( F_CPU/1000.0 * __ms)+1);\
+  24:src/hd44780.c ****     else __builtin_avr_delay_cycles((unsigned long) ( F_CPU/1000.0 * __ms))
+  25:src/hd44780.c ****   #define Delay_s(__s) \
+  26:src/hd44780.c ****     if((unsigned long) (F_CPU/1.0 * __s) != F_CPU/1.0 * __s)\
+  27:src/hd44780.c ****           __builtin_avr_delay_cycles((unsigned long) ( F_CPU/1.0 * __s)+1);\
+  28:src/hd44780.c ****     else __builtin_avr_delay_cycles((unsigned long) ( F_CPU/1.0 * __s))
+  29:src/hd44780.c **** #endif
+  30:src/hd44780.c **** 
+  31:src/hd44780.c **** #if !defined(LCD_BITS) || (LCD_BITS!=4 && LCD_BITS!=8)
+  32:src/hd44780.c ****   #error LCD_BITS is not defined or not valid.
+  33:src/hd44780.c **** #endif
+  34:src/hd44780.c **** 
+  35:src/hd44780.c **** #if !defined(WAIT_MODE) || (WAIT_MODE!=0 && WAIT_MODE!=1)
+  36:src/hd44780.c ****   #error WAIT_MODE is not defined or not valid.
+  37:src/hd44780.c **** #endif
+  38:src/hd44780.c **** 
+  39:src/hd44780.c **** #if !defined(RW_LINE_IMPLEMENTED) || (RW_LINE_IMPLEMENTED!=0 && RW_LINE_IMPLEMENTED!=1)
+  40:src/hd44780.c ****   #error RW_LINE_IMPLEMENTED is not defined or not valid.
+  41:src/hd44780.c **** #endif
+  42:src/hd44780.c **** 
+  43:src/hd44780.c **** #if (WAIT_MODE==1 && RW_LINE_IMPLEMENTED!=1)
+  44:src/hd44780.c ****   #error WAIT_MODE=1 requires RW_LINE_IMPLEMENTED=1.
+  45:src/hd44780.c **** #endif
+  46:src/hd44780.c **** 
+  47:src/hd44780.c **** #if !defined(LCD_DISPLAYS) || (LCD_DISPLAYS<1) || (LCD_DISPLAYS>4)
+  48:src/hd44780.c ****   #error LCD_DISPLAYS is not defined or not valid.
+  49:src/hd44780.c **** #endif
+  50:src/hd44780.c **** 
+  51:src/hd44780.c **** // Constants/Macros
+  52:src/hd44780.c **** #define PIN(x) (*(&x - 2))           // Address of Data Direction Register of Port X
+  53:src/hd44780.c **** #define DDR(x) (*(&x - 1))           // Address of Input Register of Port X
+  54:src/hd44780.c **** 
+  55:src/hd44780.c **** //PORT defines
+  56:src/hd44780.c **** #define lcd_rs_port_low() LCD_RS_PORT&=~_BV(LCD_RS_PIN)
+  57:src/hd44780.c **** #if RW_LINE_IMPLEMENTED==1
+  58:src/hd44780.c ****   #define lcd_rw_port_low() LCD_RW_PORT&=~_BV(LCD_RW_PIN)
+  59:src/hd44780.c **** #endif
+  60:src/hd44780.c **** #define lcd_db0_port_low() LCD_DB0_PORT&=~_BV(LCD_DB0_PIN)
+  61:src/hd44780.c **** #define lcd_db1_port_low() LCD_DB1_PORT&=~_BV(LCD_DB1_PIN)
+  62:src/hd44780.c **** #define lcd_db2_port_low() LCD_DB2_PORT&=~_BV(LCD_DB2_PIN)
+  63:src/hd44780.c **** #define lcd_db3_port_low() LCD_DB3_PORT&=~_BV(LCD_DB3_PIN)
+  64:src/hd44780.c **** #define lcd_db4_port_low() LCD_DB4_PORT&=~_BV(LCD_DB4_PIN)
+  65:src/hd44780.c **** #define lcd_db5_port_low() LCD_DB5_PORT&=~_BV(LCD_DB5_PIN)
+  66:src/hd44780.c **** #define lcd_db6_port_low() LCD_DB6_PORT&=~_BV(LCD_DB6_PIN)
+  67:src/hd44780.c **** #define lcd_db7_port_low() LCD_DB7_PORT&=~_BV(LCD_DB7_PIN)
+  68:src/hd44780.c **** 
+  69:src/hd44780.c **** #define lcd_rs_port_high() LCD_RS_PORT|=_BV(LCD_RS_PIN)
+  70:src/hd44780.c **** #if RW_LINE_IMPLEMENTED==1
+  71:src/hd44780.c ****   #define lcd_rw_port_high() LCD_RW_PORT|=_BV(LCD_RW_PIN)
+  72:src/hd44780.c **** #endif
+  73:src/hd44780.c **** #define lcd_db0_port_high() LCD_DB0_PORT|=_BV(LCD_DB0_PIN)
+  74:src/hd44780.c **** #define lcd_db1_port_high() LCD_DB1_PORT|=_BV(LCD_DB1_PIN)
+  75:src/hd44780.c **** #define lcd_db2_port_high() LCD_DB2_PORT|=_BV(LCD_DB2_PIN)
+  76:src/hd44780.c **** #define lcd_db3_port_high() LCD_DB3_PORT|=_BV(LCD_DB3_PIN)
+  77:src/hd44780.c **** #define lcd_db4_port_high() LCD_DB4_PORT|=_BV(LCD_DB4_PIN)
+  78:src/hd44780.c **** #define lcd_db5_port_high() LCD_DB5_PORT|=_BV(LCD_DB5_PIN)
+  79:src/hd44780.c **** #define lcd_db6_port_high() LCD_DB6_PORT|=_BV(LCD_DB6_PIN)
+  80:src/hd44780.c **** #define lcd_db7_port_high() LCD_DB7_PORT|=_BV(LCD_DB7_PIN)
+  81:src/hd44780.c **** 
+  82:src/hd44780.c **** #define lcd_rs_port_set(value) if (value) lcd_rs_port_high(); else lcd_rs_port_low();
+  83:src/hd44780.c **** #if RW_LINE_IMPLEMENTED==1
+  84:src/hd44780.c ****   #define lcd_rw_port_set(value) if (value) lcd_rw_port_high(); else lcd_rw_port_low();
+  85:src/hd44780.c **** #endif
+  86:src/hd44780.c **** #define lcd_db0_port_set(value) if (value) lcd_db0_port_high(); else lcd_db0_port_low();
+  87:src/hd44780.c **** #define lcd_db1_port_set(value) if (value) lcd_db1_port_high(); else lcd_db1_port_low();
+  88:src/hd44780.c **** #define lcd_db2_port_set(value) if (value) lcd_db2_port_high(); else lcd_db2_port_low();
+  89:src/hd44780.c **** #define lcd_db3_port_set(value) if (value) lcd_db3_port_high(); else lcd_db3_port_low();
+  90:src/hd44780.c **** #define lcd_db4_port_set(value) if (value) lcd_db4_port_high(); else lcd_db4_port_low();
+  91:src/hd44780.c **** #define lcd_db5_port_set(value) if (value) lcd_db5_port_high(); else lcd_db5_port_low();
+  92:src/hd44780.c **** #define lcd_db6_port_set(value) if (value) lcd_db6_port_high(); else lcd_db6_port_low();
+  93:src/hd44780.c **** #define lcd_db7_port_set(value) if (value) lcd_db7_port_high(); else lcd_db7_port_low();
+  94:src/hd44780.c **** 
+  95:src/hd44780.c **** //PIN defines
+  96:src/hd44780.c **** #define lcd_db0_pin_get() (((PIN(LCD_DB0_PORT) & _BV(LCD_DB0_PIN))==0)?0:1)
+  97:src/hd44780.c **** #define lcd_db1_pin_get() (((PIN(LCD_DB1_PORT) & _BV(LCD_DB1_PIN))==0)?0:1)
+  98:src/hd44780.c **** #define lcd_db2_pin_get() (((PIN(LCD_DB2_PORT) & _BV(LCD_DB2_PIN))==0)?0:1)
+  99:src/hd44780.c **** #define lcd_db3_pin_get() (((PIN(LCD_DB3_PORT) & _BV(LCD_DB3_PIN))==0)?0:1)
+ 100:src/hd44780.c **** #define lcd_db4_pin_get() (((PIN(LCD_DB4_PORT) & _BV(LCD_DB4_PIN))==0)?0:1)
+ 101:src/hd44780.c **** #define lcd_db5_pin_get() (((PIN(LCD_DB5_PORT) & _BV(LCD_DB5_PIN))==0)?0:1)
+ 102:src/hd44780.c **** #define lcd_db6_pin_get() (((PIN(LCD_DB6_PORT) & _BV(LCD_DB6_PIN))==0)?0:1)
+ 103:src/hd44780.c **** #define lcd_db7_pin_get() (((PIN(LCD_DB7_PORT) & _BV(LCD_DB7_PIN))==0)?0:1)
+ 104:src/hd44780.c **** 
+ 105:src/hd44780.c **** //DDR defines
+ 106:src/hd44780.c **** #define lcd_rs_ddr_low() DDR(LCD_RS_PORT)&=~_BV(LCD_RS_PIN)
+ 107:src/hd44780.c **** #if RW_LINE_IMPLEMENTED==1
+ 108:src/hd44780.c ****   #define lcd_rw_ddr_low() DDR(LCD_RW_PORT)&=~_BV(LCD_RW_PIN)
+ 109:src/hd44780.c **** #endif
+ 110:src/hd44780.c **** #define lcd_db0_ddr_low() DDR(LCD_DB0_PORT)&=~_BV(LCD_DB0_PIN)
+ 111:src/hd44780.c **** #define lcd_db1_ddr_low() DDR(LCD_DB1_PORT)&=~_BV(LCD_DB1_PIN)
+ 112:src/hd44780.c **** #define lcd_db2_ddr_low() DDR(LCD_DB2_PORT)&=~_BV(LCD_DB2_PIN)
+ 113:src/hd44780.c **** #define lcd_db3_ddr_low() DDR(LCD_DB3_PORT)&=~_BV(LCD_DB3_PIN)
+ 114:src/hd44780.c **** #define lcd_db4_ddr_low() DDR(LCD_DB4_PORT)&=~_BV(LCD_DB4_PIN)
+ 115:src/hd44780.c **** #define lcd_db5_ddr_low() DDR(LCD_DB5_PORT)&=~_BV(LCD_DB5_PIN)
+ 116:src/hd44780.c **** #define lcd_db6_ddr_low() DDR(LCD_DB6_PORT)&=~_BV(LCD_DB6_PIN)
+ 117:src/hd44780.c **** #define lcd_db7_ddr_low() DDR(LCD_DB7_PORT)&=~_BV(LCD_DB7_PIN)
+ 118:src/hd44780.c **** 
+ 119:src/hd44780.c **** #define lcd_rs_ddr_high() DDR(LCD_RS_PORT)|=_BV(LCD_RS_PIN)
+ 120:src/hd44780.c **** #if RW_LINE_IMPLEMENTED==1
+ 121:src/hd44780.c ****   #define lcd_rw_ddr_high() DDR(LCD_RW_PORT)|=_BV(LCD_RW_PIN)
+ 122:src/hd44780.c **** #endif
+ 123:src/hd44780.c **** #define lcd_db0_ddr_high() DDR(LCD_DB0_PORT)|=_BV(LCD_DB0_PIN)
+ 124:src/hd44780.c **** #define lcd_db1_ddr_high() DDR(LCD_DB1_PORT)|=_BV(LCD_DB1_PIN)
+ 125:src/hd44780.c **** #define lcd_db2_ddr_high() DDR(LCD_DB2_PORT)|=_BV(LCD_DB2_PIN)
+ 126:src/hd44780.c **** #define lcd_db3_ddr_high() DDR(LCD_DB3_PORT)|=_BV(LCD_DB3_PIN)
+ 127:src/hd44780.c **** #define lcd_db4_ddr_high() DDR(LCD_DB4_PORT)|=_BV(LCD_DB4_PIN)
+ 128:src/hd44780.c **** #define lcd_db5_ddr_high() DDR(LCD_DB5_PORT)|=_BV(LCD_DB5_PIN)
+ 129:src/hd44780.c **** #define lcd_db6_ddr_high() DDR(LCD_DB6_PORT)|=_BV(LCD_DB6_PIN)
+ 130:src/hd44780.c **** #define lcd_db7_ddr_high() DDR(LCD_DB7_PORT)|=_BV(LCD_DB7_PIN)
+ 131:src/hd44780.c **** 
+ 132:src/hd44780.c **** #define lcd_rs_ddr_set(value) if (value) lcd_rs_ddr_high(); else lcd_rs_ddr_low();
+ 133:src/hd44780.c **** #if RW_LINE_IMPLEMENTED==1
+ 134:src/hd44780.c ****   #define lcd_rw_ddr_set(value) if (value) lcd_rw_ddr_high(); else lcd_rw_ddr_low();
+ 135:src/hd44780.c **** #endif
+ 136:src/hd44780.c **** #define lcd_db0_ddr_set(value) if (value) lcd_db0_ddr_high(); else lcd_db0_ddr_low();
+ 137:src/hd44780.c **** #define lcd_db1_ddr_set(value) if (value) lcd_db1_ddr_high(); else lcd_db1_ddr_low();
+ 138:src/hd44780.c **** #define lcd_db2_ddr_set(value) if (value) lcd_db2_ddr_high(); else lcd_db2_ddr_low();
+ 139:src/hd44780.c **** #define lcd_db3_ddr_set(value) if (value) lcd_db3_ddr_high(); else lcd_db3_ddr_low();
+ 140:src/hd44780.c **** #define lcd_db4_ddr_set(value) if (value) lcd_db4_ddr_high(); else lcd_db4_ddr_low();
+ 141:src/hd44780.c **** #define lcd_db5_ddr_set(value) if (value) lcd_db5_ddr_high(); else lcd_db5_ddr_low();
+ 142:src/hd44780.c **** #define lcd_db6_ddr_set(value) if (value) lcd_db6_ddr_high(); else lcd_db6_ddr_low();
+ 143:src/hd44780.c **** #define lcd_db7_ddr_set(value) if (value) lcd_db7_ddr_high(); else lcd_db7_ddr_low();
+ 144:src/hd44780.c **** 
+ 145:src/hd44780.c **** #if (WAIT_MODE==1 && RW_LINE_IMPLEMENTED==1)
+ 146:src/hd44780.c **** static unsigned char PrevCmdInvolvedAddressCounter=0;
+ 147:src/hd44780.c **** #endif
+ 148:src/hd44780.c **** 
+ 149:src/hd44780.c **** #if (LCD_DISPLAYS>1)
+ 150:src/hd44780.c **** static unsigned char ActiveDisplay=1;
+ 151:src/hd44780.c **** #endif
+ 152:src/hd44780.c **** 
+ 153:src/hd44780.c **** static inline void lcd_e_port_low(void)
+ 154:src/hd44780.c **** {
+  14               		.loc 1 154 0
+  15               		.cfi_startproc
+  16               	/* prologue: function */
+  17               	/* frame size = 0 */
+  18               	/* stack size = 0 */
+  19               	.L__stack_usage = 0
+ 155:src/hd44780.c ****   #if (LCD_DISPLAYS>1)
+ 156:src/hd44780.c ****   switch (ActiveDisplay)
+ 157:src/hd44780.c ****     {
+ 158:src/hd44780.c ****       case 2 : LCD_E2_PORT&=~_BV(LCD_E2_PIN);
+ 159:src/hd44780.c ****                break;
+ 160:src/hd44780.c ****       #if (LCD_DISPLAYS>=3)
+ 161:src/hd44780.c ****       case 3 : LCD_E3_PORT&=~_BV(LCD_E3_PIN);
+ 162:src/hd44780.c ****                break;
+ 163:src/hd44780.c ****       #endif
+ 164:src/hd44780.c ****       #if (LCD_DISPLAYS==4)
+ 165:src/hd44780.c ****       case 4 : LCD_E4_PORT&=~_BV(LCD_E4_PIN);
+ 166:src/hd44780.c ****                break;
+ 167:src/hd44780.c ****       #endif
+ 168:src/hd44780.c ****       default :
+ 169:src/hd44780.c ****   #endif
+ 170:src/hd44780.c ****                 LCD_E_PORT&=~_BV(LCD_E_PIN);
+  20               		.loc 1 170 0
+  21 0000 2B98      		cbi 0x5,3
+  22 0002 0895      		ret
+  23               		.cfi_endproc
+  24               	.LFE1:
+  27               	lcd_e_port_high:
+  28               	.LFB2:
+ 171:src/hd44780.c ****   #if (LCD_DISPLAYS>1)
+ 172:src/hd44780.c ****     }
+ 173:src/hd44780.c ****   #endif
+ 174:src/hd44780.c **** }
+ 175:src/hd44780.c **** 
+ 176:src/hd44780.c **** static inline void lcd_e_port_high(void)
+ 177:src/hd44780.c **** {
+  29               		.loc 1 177 0
+  30               		.cfi_startproc
+  31               	/* prologue: function */
+  32               	/* frame size = 0 */
+  33               	/* stack size = 0 */
+  34               	.L__stack_usage = 0
+ 178:src/hd44780.c ****   #if (LCD_DISPLAYS>1)
+ 179:src/hd44780.c ****   switch (ActiveDisplay)
+ 180:src/hd44780.c ****     {
+ 181:src/hd44780.c ****       case 2 : LCD_E2_PORT|=_BV(LCD_E2_PIN);
+ 182:src/hd44780.c ****                break;
+ 183:src/hd44780.c ****       #if (LCD_DISPLAYS>=3)
+ 184:src/hd44780.c ****       case 3 : LCD_E3_PORT|=_BV(LCD_E3_PIN);
+ 185:src/hd44780.c ****                break;
+ 186:src/hd44780.c ****       #endif
+ 187:src/hd44780.c ****       #if (LCD_DISPLAYS==4)
+ 188:src/hd44780.c ****       case 4 : LCD_E4_PORT|=_BV(LCD_E4_PIN);
+ 189:src/hd44780.c ****                break;
+ 190:src/hd44780.c ****       #endif
+ 191:src/hd44780.c ****       default :
+ 192:src/hd44780.c ****   #endif
+ 193:src/hd44780.c ****                 LCD_E_PORT|=_BV(LCD_E_PIN);
+  35               		.loc 1 193 0
+  36 0004 2B9A      		sbi 0x5,3
+  37 0006 0895      		ret
+  38               		.cfi_endproc
+  39               	.LFE2:
+  42               	lcd_write:
+  43               	.LFB5:
+ 194:src/hd44780.c ****   #if (LCD_DISPLAYS>1)
+ 195:src/hd44780.c ****     }
+ 196:src/hd44780.c ****   #endif
+ 197:src/hd44780.c **** }
+ 198:src/hd44780.c **** 
+ 199:src/hd44780.c **** static inline void lcd_e_ddr_low(void)
+ 200:src/hd44780.c **** {
+ 201:src/hd44780.c ****   #if (LCD_DISPLAYS>1)
+ 202:src/hd44780.c ****   switch (ActiveDisplay)
+ 203:src/hd44780.c ****     {
+ 204:src/hd44780.c ****       case 2 : DDR(LCD_E2_PORT)&=~_BV(LCD_E2_PIN);
+ 205:src/hd44780.c ****                break;
+ 206:src/hd44780.c ****       #if (LCD_DISPLAYS>=3)
+ 207:src/hd44780.c ****       case 3 : DDR(LCD_E3_PORT)&=~_BV(LCD_E3_PIN);
+ 208:src/hd44780.c ****                break;
+ 209:src/hd44780.c ****       #endif
+ 210:src/hd44780.c ****       #if (LCD_DISPLAYS==4)
+ 211:src/hd44780.c ****       case 4 : DDR(LCD_E4_PORT)&=~_BV(LCD_E4_PIN);
+ 212:src/hd44780.c ****                break;
+ 213:src/hd44780.c ****       #endif
+ 214:src/hd44780.c ****       default :
+ 215:src/hd44780.c ****   #endif
+ 216:src/hd44780.c ****                 DDR(LCD_E_PORT)&=~_BV(LCD_E_PIN);
+ 217:src/hd44780.c ****   #if (LCD_DISPLAYS>1)
+ 218:src/hd44780.c ****     }
+ 219:src/hd44780.c ****   #endif
+ 220:src/hd44780.c **** }
+ 221:src/hd44780.c **** 
+ 222:src/hd44780.c **** static inline void lcd_e_ddr_high(void)
+ 223:src/hd44780.c **** {
+ 224:src/hd44780.c ****   #if (LCD_DISPLAYS>1)
+ 225:src/hd44780.c ****   switch (ActiveDisplay)
+ 226:src/hd44780.c ****     {
+ 227:src/hd44780.c ****       case 2 : DDR(LCD_E2_PORT)|=_BV(LCD_E2_PIN);
+ 228:src/hd44780.c ****                break;
+ 229:src/hd44780.c ****       #if (LCD_DISPLAYS>=3)
+ 230:src/hd44780.c ****       case 3 : DDR(LCD_E3_PORT)|=_BV(LCD_E3_PIN);
+ 231:src/hd44780.c ****                break;
+ 232:src/hd44780.c ****       #endif
+ 233:src/hd44780.c ****       #if (LCD_DISPLAYS==4)
+ 234:src/hd44780.c ****       case 4 : DDR(LCD_E4_PORT)|=_BV(LCD_E4_PIN);
+ 235:src/hd44780.c ****                break;
+ 236:src/hd44780.c ****       #endif
+ 237:src/hd44780.c ****       default :
+ 238:src/hd44780.c ****   #endif
+ 239:src/hd44780.c ****                 DDR(LCD_E_PORT)|=_BV(LCD_E_PIN);
+ 240:src/hd44780.c ****   #if (LCD_DISPLAYS>1)
+ 241:src/hd44780.c ****     }
+ 242:src/hd44780.c ****   #endif
+ 243:src/hd44780.c **** }
+ 244:src/hd44780.c **** 
+ 245:src/hd44780.c **** 
+ 246:src/hd44780.c **** /*************************************************************************
+ 247:src/hd44780.c **** loops while lcd is busy, returns address counter
+ 248:src/hd44780.c **** *************************************************************************/
+ 249:src/hd44780.c **** #if (WAIT_MODE==1 && RW_LINE_IMPLEMENTED==1)
+ 250:src/hd44780.c **** static uint8_t lcd_read(uint8_t rs);
+ 251:src/hd44780.c **** 
+ 252:src/hd44780.c **** static void lcd_waitbusy(void)
+ 253:src/hd44780.c ****   {
+ 254:src/hd44780.c ****     register uint8_t c;
+ 255:src/hd44780.c ****     unsigned int ul1=0;
+ 256:src/hd44780.c **** 
+ 257:src/hd44780.c ****     while ( ((c=lcd_read(0)) & (1<<LCD_BUSY)) && ul1<((F_CPU/16384>=16)?F_CPU/16384:16))     // Wai
+ 258:src/hd44780.c ****       ul1++;
+ 259:src/hd44780.c ****   }
+ 260:src/hd44780.c **** #endif
+ 261:src/hd44780.c **** 
+ 262:src/hd44780.c **** 
+ 263:src/hd44780.c **** /*************************************************************************
+ 264:src/hd44780.c **** Low-level function to read byte from LCD controller
+ 265:src/hd44780.c **** Input:    rs     1: read data
+ 266:src/hd44780.c ****                  0: read busy flag / address counter
+ 267:src/hd44780.c **** Returns:  byte read from LCD controller
+ 268:src/hd44780.c **** *************************************************************************/
+ 269:src/hd44780.c **** #if RW_LINE_IMPLEMENTED==1
+ 270:src/hd44780.c **** static uint8_t lcd_read(uint8_t rs)
+ 271:src/hd44780.c ****   {
+ 272:src/hd44780.c ****     uint8_t data;
+ 273:src/hd44780.c ****     
+ 274:src/hd44780.c ****     #if (WAIT_MODE==1 && RW_LINE_IMPLEMENTED==1)
+ 275:src/hd44780.c ****     if (rs)
+ 276:src/hd44780.c ****       lcd_waitbusy();
+ 277:src/hd44780.c ****       if (PrevCmdInvolvedAddressCounter)
+ 278:src/hd44780.c ****         {
+ 279:src/hd44780.c ****           Delay_us(5);
+ 280:src/hd44780.c ****           PrevCmdInvolvedAddressCounter=0;
+ 281:src/hd44780.c ****         }
+ 282:src/hd44780.c ****     #endif
+ 283:src/hd44780.c **** 
+ 284:src/hd44780.c ****     if (rs)
+ 285:src/hd44780.c ****       {
+ 286:src/hd44780.c ****         lcd_rs_port_high();                             // RS=1: Read Data
+ 287:src/hd44780.c ****         #if (WAIT_MODE==1 && RW_LINE_IMPLEMENTED==1)
+ 288:src/hd44780.c ****         PrevCmdInvolvedAddressCounter=1;
+ 289:src/hd44780.c ****         #endif
+ 290:src/hd44780.c ****       }
+ 291:src/hd44780.c ****     else lcd_rs_port_low();                           // RS=0: Read Busy Flag
+ 292:src/hd44780.c **** 
+ 293:src/hd44780.c ****     
+ 294:src/hd44780.c ****     lcd_rw_port_high();                               // RW=1: Read Mode
+ 295:src/hd44780.c **** 
+ 296:src/hd44780.c ****     #if LCD_BITS==4
+ 297:src/hd44780.c ****       lcd_db7_ddr_low();                              // Configure Data Pins as Input
+ 298:src/hd44780.c ****       lcd_db6_ddr_low();
+ 299:src/hd44780.c ****       lcd_db5_ddr_low();
+ 300:src/hd44780.c ****       lcd_db4_ddr_low();
+ 301:src/hd44780.c **** 
+ 302:src/hd44780.c ****       lcd_e_port_high();                              // Read High Nibble First
+ 303:src/hd44780.c ****       Delay_ns(500);
+ 304:src/hd44780.c **** 
+ 305:src/hd44780.c ****       data=lcd_db4_pin_get() << 4 | lcd_db5_pin_get() << 5 |
+ 306:src/hd44780.c ****            lcd_db6_pin_get() << 6 | lcd_db7_pin_get() << 7;
+ 307:src/hd44780.c **** 
+ 308:src/hd44780.c ****       lcd_e_port_low();
+ 309:src/hd44780.c ****       Delay_ns(500);
+ 310:src/hd44780.c **** 
+ 311:src/hd44780.c ****       lcd_e_port_high();                              // Read Low Nibble
+ 312:src/hd44780.c ****       Delay_ns(500);
+ 313:src/hd44780.c **** 
+ 314:src/hd44780.c ****       data|=lcd_db4_pin_get() << 0 | lcd_db5_pin_get() << 1 |
+ 315:src/hd44780.c ****             lcd_db6_pin_get() << 2 | lcd_db7_pin_get() << 3;
+ 316:src/hd44780.c **** 
+ 317:src/hd44780.c ****       lcd_e_port_low();
+ 318:src/hd44780.c **** 
+ 319:src/hd44780.c ****       lcd_db7_ddr_high();                             // Configure Data Pins as Output
+ 320:src/hd44780.c ****       lcd_db6_ddr_high();
+ 321:src/hd44780.c ****       lcd_db5_ddr_high();
+ 322:src/hd44780.c ****       lcd_db4_ddr_high();
+ 323:src/hd44780.c **** 
+ 324:src/hd44780.c ****       lcd_db7_port_high();                            // Pins High (Inactive)
+ 325:src/hd44780.c ****       lcd_db6_port_high();
+ 326:src/hd44780.c ****       lcd_db5_port_high();
+ 327:src/hd44780.c ****       lcd_db4_port_high();
+ 328:src/hd44780.c ****     #else //using 8-Bit-Mode
+ 329:src/hd44780.c ****       lcd_db7_ddr_low();                              // Configure Data Pins as Input
+ 330:src/hd44780.c ****       lcd_db6_ddr_low();
+ 331:src/hd44780.c ****       lcd_db5_ddr_low();
+ 332:src/hd44780.c ****       lcd_db4_ddr_low();
+ 333:src/hd44780.c ****       lcd_db3_ddr_low();
+ 334:src/hd44780.c ****       lcd_db2_ddr_low();
+ 335:src/hd44780.c ****       lcd_db1_ddr_low();
+ 336:src/hd44780.c ****       lcd_db0_ddr_low();
+ 337:src/hd44780.c **** 
+ 338:src/hd44780.c ****       lcd_e_port_high();
+ 339:src/hd44780.c ****       Delay_ns(500);
+ 340:src/hd44780.c **** 
+ 341:src/hd44780.c ****       data=lcd_db7_pin_get() << 7 | lcd_db6_pin_get() << 6 |
+ 342:src/hd44780.c ****            lcd_db5_pin_get() << 5 | lcd_db4_pin_get() << 4 |
+ 343:src/hd44780.c ****            lcd_db3_pin_get() << 3 | lcd_db2_pin_get() << 2 |
+ 344:src/hd44780.c ****            lcd_db1_pin_get() << 1 | lcd_db0_pin_get();
+ 345:src/hd44780.c **** 
+ 346:src/hd44780.c ****       lcd_e_port_low();
+ 347:src/hd44780.c **** 
+ 348:src/hd44780.c ****       lcd_db7_ddr_high();                             // Configure Data Pins as Output
+ 349:src/hd44780.c ****       lcd_db6_ddr_high();
+ 350:src/hd44780.c ****       lcd_db5_ddr_high();
+ 351:src/hd44780.c ****       lcd_db4_ddr_high();
+ 352:src/hd44780.c ****       lcd_db3_ddr_high();
+ 353:src/hd44780.c ****       lcd_db2_ddr_high();
+ 354:src/hd44780.c ****       lcd_db1_ddr_high();
+ 355:src/hd44780.c ****       lcd_db0_ddr_high();
+ 356:src/hd44780.c **** 
+ 357:src/hd44780.c ****       lcd_db7_port_high();                            // Pins High (Inactive)
+ 358:src/hd44780.c ****       lcd_db6_port_high();
+ 359:src/hd44780.c ****       lcd_db5_port_high();
+ 360:src/hd44780.c ****       lcd_db4_port_high();
+ 361:src/hd44780.c ****       lcd_db3_port_high();
+ 362:src/hd44780.c ****       lcd_db2_port_high();
+ 363:src/hd44780.c ****       lcd_db1_port_high();
+ 364:src/hd44780.c ****       lcd_db0_port_high();
+ 365:src/hd44780.c ****     #endif
+ 366:src/hd44780.c ****     
+ 367:src/hd44780.c ****     lcd_rw_port_low();
+ 368:src/hd44780.c **** 
+ 369:src/hd44780.c ****     #if (WAIT_MODE==0 || RW_LINE_IMPLEMENTED==0)
+ 370:src/hd44780.c ****     if (rs)
+ 371:src/hd44780.c ****       Delay_us(40);
+ 372:src/hd44780.c ****     else Delay_us(1);
+ 373:src/hd44780.c ****     #endif
+ 374:src/hd44780.c ****     return data;
+ 375:src/hd44780.c ****   }
+ 376:src/hd44780.c **** 
+ 377:src/hd44780.c **** uint8_t lcd_getc()
+ 378:src/hd44780.c ****   {
+ 379:src/hd44780.c ****     return lcd_read(1);
+ 380:src/hd44780.c ****   }
+ 381:src/hd44780.c **** 
+ 382:src/hd44780.c **** #endif
+ 383:src/hd44780.c **** 
+ 384:src/hd44780.c **** /*************************************************************************
+ 385:src/hd44780.c **** Low-level function to write byte to LCD controller
+ 386:src/hd44780.c **** Input:    data   byte to write to LCD
+ 387:src/hd44780.c ****           rs     1: write data
+ 388:src/hd44780.c ****                  0: write instruction
+ 389:src/hd44780.c **** Returns:  none
+ 390:src/hd44780.c **** *************************************************************************/
+ 391:src/hd44780.c **** static void lcd_write(uint8_t data,uint8_t rs)
+ 392:src/hd44780.c ****   {
+  44               		.loc 1 392 0
+  45               		.cfi_startproc
+  46               	.LVL0:
+  47 0008 CF93      		push r28
+  48               	.LCFI0:
+  49               		.cfi_def_cfa_offset 3
+  50               		.cfi_offset 28, -2
+  51 000a DF93      		push r29
+  52               	.LCFI1:
+  53               		.cfi_def_cfa_offset 4
+  54               		.cfi_offset 29, -3
+  55               	/* prologue: function */
+  56               	/* frame size = 0 */
+  57               	/* stack size = 2 */
+  58               	.L__stack_usage = 2
+  59 000c C82F      		mov r28,r24
+  60 000e D62F      		mov r29,r22
+ 393:src/hd44780.c ****     #if (WAIT_MODE==1 && RW_LINE_IMPLEMENTED==1)
+ 394:src/hd44780.c ****       lcd_waitbusy();
+ 395:src/hd44780.c ****       if (PrevCmdInvolvedAddressCounter)
+ 396:src/hd44780.c ****         {
+ 397:src/hd44780.c ****           Delay_us(5);
+ 398:src/hd44780.c ****           PrevCmdInvolvedAddressCounter=0;
+ 399:src/hd44780.c ****         }
+ 400:src/hd44780.c ****     #endif
+ 401:src/hd44780.c **** 
+ 402:src/hd44780.c ****     if (rs)
+  61               		.loc 1 402 0
+  62 0010 6623      		tst r22
+  63 0012 01F0      		breq .L4
+ 403:src/hd44780.c ****       {
+ 404:src/hd44780.c ****         lcd_rs_port_high();                            // RS=1: Write Character
+  64               		.loc 1 404 0
+  65 0014 2C9A      		sbi 0x5,4
+  66 0016 00C0      		rjmp .L5
+  67               	.L4:
+ 405:src/hd44780.c ****         #if (WAIT_MODE==1 && RW_LINE_IMPLEMENTED==1)
+ 406:src/hd44780.c ****         PrevCmdInvolvedAddressCounter=1;
+ 407:src/hd44780.c ****         #endif
+ 408:src/hd44780.c ****       }
+ 409:src/hd44780.c ****     else
+ 410:src/hd44780.c ****       {
+ 411:src/hd44780.c ****         lcd_rs_port_low();                          // RS=0: Write Command
+  68               		.loc 1 411 0
+  69 0018 2C98      		cbi 0x5,4
+  70               	.L5:
+ 412:src/hd44780.c ****         #if (WAIT_MODE==1 && RW_LINE_IMPLEMENTED==1)
+ 413:src/hd44780.c ****         PrevCmdInvolvedAddressCounter=0;
+ 414:src/hd44780.c ****         #endif
+ 415:src/hd44780.c ****       }
+ 416:src/hd44780.c **** 
+ 417:src/hd44780.c ****     #if LCD_BITS==4
+ 418:src/hd44780.c ****       lcd_db7_port_set(data&_BV(7));                  //Output High Nibble
+  71               		.loc 1 418 0
+  72 001a C7FF      		sbrs r28,7
+  73 001c 00C0      		rjmp .L6
+  74               		.loc 1 418 0 is_stmt 0 discriminator 1
+  75 001e 5F9A      		sbi 0xb,7
+  76 0020 00C0      		rjmp .L7
+  77               	.L6:
+  78               		.loc 1 418 0 discriminator 2
+  79 0022 5F98      		cbi 0xb,7
+  80               	.L7:
+ 419:src/hd44780.c ****       lcd_db6_port_set(data&_BV(6));
+  81               		.loc 1 419 0 is_stmt 1
+  82 0024 C6FF      		sbrs r28,6
+  83 0026 00C0      		rjmp .L8
+  84               		.loc 1 419 0 is_stmt 0 discriminator 1
+  85 0028 289A      		sbi 0x5,0
+  86 002a 00C0      		rjmp .L9
+  87               	.L8:
+  88               		.loc 1 419 0 discriminator 2
+  89 002c 2898      		cbi 0x5,0
+  90               	.L9:
+ 420:src/hd44780.c ****       lcd_db5_port_set(data&_BV(5));
+  91               		.loc 1 420 0 is_stmt 1
+  92 002e C5FF      		sbrs r28,5
+  93 0030 00C0      		rjmp .L10
+  94               		.loc 1 420 0 is_stmt 0 discriminator 1
+  95 0032 299A      		sbi 0x5,1
+  96 0034 00C0      		rjmp .L11
+  97               	.L10:
+  98               		.loc 1 420 0 discriminator 2
+  99 0036 2998      		cbi 0x5,1
+ 100               	.L11:
+ 421:src/hd44780.c ****       lcd_db4_port_set(data&_BV(4));
+ 101               		.loc 1 421 0 is_stmt 1
+ 102 0038 C4FF      		sbrs r28,4
+ 103 003a 00C0      		rjmp .L12
+ 104               		.loc 1 421 0 is_stmt 0 discriminator 1
+ 105 003c 2D9A      		sbi 0x5,5
+ 106 003e 00C0      		rjmp .L13
+ 107               	.L12:
+ 108               		.loc 1 421 0 discriminator 2
+ 109 0040 2D98      		cbi 0x5,5
+ 110               	.L13:
+ 422:src/hd44780.c **** 
+ 423:src/hd44780.c ****       Delay_ns(100);
+ 111               		.loc 1 423 0 is_stmt 1 discriminator 1
+ 112 0042 00C0      		rjmp .
+ 424:src/hd44780.c ****       lcd_e_port_high();
+ 113               		.loc 1 424 0 discriminator 1
+ 114 0044 0E94 0000 		call lcd_e_port_high
+ 115               	.LVL1:
+ 425:src/hd44780.c **** 
+ 426:src/hd44780.c ****       Delay_ns(500);
+ 116               		.loc 1 426 0 discriminator 1
+ 117 0048 82E0      		ldi r24,lo8(2)
+ 118 004a 8A95      		1: dec r24
+ 119 004c 01F4      		brne 1b
+ 120 004e 00C0      		rjmp .
+ 427:src/hd44780.c ****       lcd_e_port_low();
+ 121               		.loc 1 427 0 discriminator 1
+ 122 0050 0E94 0000 		call lcd_e_port_low
+ 123               	.LVL2:
+ 428:src/hd44780.c **** 
+ 429:src/hd44780.c ****       lcd_db7_port_set(data&_BV(3));                  //Output High Nibble
+ 124               		.loc 1 429 0 discriminator 1
+ 125 0054 C3FF      		sbrs r28,3
+ 126 0056 00C0      		rjmp .L14
+ 127 0058 5F9A      		sbi 0xb,7
+ 128 005a 00C0      		rjmp .L15
+ 129               	.L14:
+ 130               		.loc 1 429 0 is_stmt 0 discriminator 2
+ 131 005c 5F98      		cbi 0xb,7
+ 132               	.L15:
+ 430:src/hd44780.c ****       lcd_db6_port_set(data&_BV(2));
+ 133               		.loc 1 430 0 is_stmt 1
+ 134 005e C2FF      		sbrs r28,2
+ 135 0060 00C0      		rjmp .L16
+ 136               		.loc 1 430 0 is_stmt 0 discriminator 1
+ 137 0062 289A      		sbi 0x5,0
+ 138 0064 00C0      		rjmp .L17
+ 139               	.L16:
+ 140               		.loc 1 430 0 discriminator 2
+ 141 0066 2898      		cbi 0x5,0
+ 142               	.L17:
+ 431:src/hd44780.c ****       lcd_db5_port_set(data&_BV(1));
+ 143               		.loc 1 431 0 is_stmt 1
+ 144 0068 C1FF      		sbrs r28,1
+ 145 006a 00C0      		rjmp .L18
+ 146               		.loc 1 431 0 is_stmt 0 discriminator 1
+ 147 006c 299A      		sbi 0x5,1
+ 148 006e 00C0      		rjmp .L19
+ 149               	.L18:
+ 150               		.loc 1 431 0 discriminator 2
+ 151 0070 2998      		cbi 0x5,1
+ 152               	.L19:
+ 432:src/hd44780.c ****       lcd_db4_port_set(data&_BV(0));
+ 153               		.loc 1 432 0 is_stmt 1
+ 154 0072 C0FF      		sbrs r28,0
+ 155 0074 00C0      		rjmp .L20
+ 156               		.loc 1 432 0 is_stmt 0 discriminator 1
+ 157 0076 2D9A      		sbi 0x5,5
+ 158 0078 00C0      		rjmp .L21
+ 159               	.L20:
+ 160               		.loc 1 432 0 discriminator 2
+ 161 007a 2D98      		cbi 0x5,5
+ 162               	.L21:
+ 433:src/hd44780.c **** 
+ 434:src/hd44780.c ****       Delay_ns(100);
+ 163               		.loc 1 434 0 is_stmt 1 discriminator 1
+ 164 007c 00C0      		rjmp .
+ 435:src/hd44780.c ****       lcd_e_port_high();
+ 165               		.loc 1 435 0 discriminator 1
+ 166 007e 0E94 0000 		call lcd_e_port_high
+ 167               	.LVL3:
+ 436:src/hd44780.c **** 
+ 437:src/hd44780.c ****       Delay_ns(500);
+ 168               		.loc 1 437 0 discriminator 1
+ 169 0082 92E0      		ldi r25,lo8(2)
+ 170 0084 9A95      		1: dec r25
+ 171 0086 01F4      		brne 1b
+ 172 0088 00C0      		rjmp .
+ 438:src/hd44780.c ****       lcd_e_port_low();
+ 173               		.loc 1 438 0 discriminator 1
+ 174 008a 0E94 0000 		call lcd_e_port_low
+ 175               	.LVL4:
+ 439:src/hd44780.c **** 
+ 440:src/hd44780.c ****       lcd_db7_port_high();                            // All Data Pins High (Inactive)
+ 176               		.loc 1 440 0 discriminator 1
+ 177 008e 5F9A      		sbi 0xb,7
+ 441:src/hd44780.c ****       lcd_db6_port_high();
+ 178               		.loc 1 441 0 discriminator 1
+ 179 0090 289A      		sbi 0x5,0
+ 442:src/hd44780.c ****       lcd_db5_port_high();
+ 180               		.loc 1 442 0 discriminator 1
+ 181 0092 299A      		sbi 0x5,1
+ 443:src/hd44780.c ****       lcd_db4_port_high();
+ 182               		.loc 1 443 0 discriminator 1
+ 183 0094 2D9A      		sbi 0x5,5
+ 444:src/hd44780.c **** 
+ 445:src/hd44780.c ****     #else //using 8-Bit_Mode
+ 446:src/hd44780.c ****       lcd_db7_port_set(data&_BV(7));                  //Output High Nibble
+ 447:src/hd44780.c ****       lcd_db6_port_set(data&_BV(6));
+ 448:src/hd44780.c ****       lcd_db5_port_set(data&_BV(5));
+ 449:src/hd44780.c ****       lcd_db4_port_set(data&_BV(4));
+ 450:src/hd44780.c ****       lcd_db3_port_set(data&_BV(3));                  //Output High Nibble
+ 451:src/hd44780.c ****       lcd_db2_port_set(data&_BV(2));
+ 452:src/hd44780.c ****       lcd_db1_port_set(data&_BV(1));
+ 453:src/hd44780.c ****       lcd_db0_port_set(data&_BV(0));
+ 454:src/hd44780.c **** 
+ 455:src/hd44780.c ****       Delay_ns(100);
+ 456:src/hd44780.c ****       lcd_e_port_high();
+ 457:src/hd44780.c ****       Delay_ns(500);
+ 458:src/hd44780.c ****       lcd_e_port_low();
+ 459:src/hd44780.c **** 
+ 460:src/hd44780.c ****       lcd_db7_port_high();                            // All Data Pins High (Inactive)
+ 461:src/hd44780.c ****       lcd_db6_port_high();
+ 462:src/hd44780.c ****       lcd_db5_port_high();
+ 463:src/hd44780.c ****       lcd_db4_port_high();
+ 464:src/hd44780.c ****       lcd_db3_port_high();
+ 465:src/hd44780.c ****       lcd_db2_port_high();
+ 466:src/hd44780.c ****       lcd_db1_port_high();
+ 467:src/hd44780.c ****       lcd_db0_port_high();
+ 468:src/hd44780.c ****     #endif
+ 469:src/hd44780.c **** 
+ 470:src/hd44780.c ****     #if (WAIT_MODE==0 || RW_LINE_IMPLEMENTED==0)
+ 471:src/hd44780.c ****       if (!rs && data<=((1<<LCD_CLR) | (1<<LCD_HOME))) // Is command clrscr or home?
+ 184               		.loc 1 471 0 discriminator 1
+ 185 0096 D111      		cpse r29,__zero_reg__
+ 186 0098 00C0      		rjmp .L22
+ 187 009a C430      		cpi r28,lo8(4)
+ 188 009c 00F4      		brsh .L22
+ 472:src/hd44780.c ****         Delay_us(1640);
+ 189               		.loc 1 472 0 discriminator 2
+ 190 009e 8FE9      		ldi r24,lo8(6559)
+ 191 00a0 99E1      		ldi r25,hi8(6559)
+ 192 00a2 0197      		1: sbiw r24,1
+ 193 00a4 01F4      		brne 1b
+ 194 00a6 00C0      		rjmp .
+ 195 00a8 00C0      		rjmp .L24
+ 196               	.L22:
+ 473:src/hd44780.c ****       else Delay_us(40);
+ 197               		.loc 1 473 0 discriminator 2
+ 198 00aa 95ED      		ldi r25,lo8(-43)
+ 199 00ac 9A95      		1: dec r25
+ 200 00ae 01F4      		brne 1b
+ 201               	.L24:
+ 202 00b0 0000      		nop
+ 203               	/* epilogue start */
+ 474:src/hd44780.c ****     #endif
+ 475:src/hd44780.c ****   }
+ 204               		.loc 1 475 0 discriminator 2
+ 205 00b2 DF91      		pop r29
+ 206               	.LVL5:
+ 207 00b4 CF91      		pop r28
+ 208               	.LVL6:
+ 209 00b6 0895      		ret
+ 210               		.cfi_endproc
+ 211               	.LFE5:
+ 213               	.global	lcd_command
+ 215               	lcd_command:
+ 216               	.LFB6:
+ 476:src/hd44780.c **** 
+ 477:src/hd44780.c **** /*************************************************************************
+ 478:src/hd44780.c **** Send LCD controller instruction command
+ 479:src/hd44780.c **** Input:   instruction to send to LCD controller, see HD44780 data sheet
+ 480:src/hd44780.c **** Returns: none
+ 481:src/hd44780.c **** *************************************************************************/
+ 482:src/hd44780.c **** void lcd_command(uint8_t cmd)
+ 483:src/hd44780.c ****   {
+ 217               		.loc 1 483 0
+ 218               		.cfi_startproc
+ 219               	.LVL7:
+ 220               	/* prologue: function */
+ 221               	/* frame size = 0 */
+ 222               	/* stack size = 0 */
+ 223               	.L__stack_usage = 0
+ 484:src/hd44780.c ****     lcd_write(cmd,0);
+ 224               		.loc 1 484 0
+ 225 00b8 60E0      		ldi r22,0
+ 226 00ba 0C94 0000 		jmp lcd_write
+ 227               	.LVL8:
+ 228               		.cfi_endproc
+ 229               	.LFE6:
+ 231               	.global	lcd_goto
+ 233               	lcd_goto:
+ 234               	.LFB7:
+ 485:src/hd44780.c ****   }
+ 486:src/hd44780.c **** 
+ 487:src/hd44780.c **** /*************************************************************************
+ 488:src/hd44780.c **** Set cursor to specified position
+ 489:src/hd44780.c **** Input:    pos position
+ 490:src/hd44780.c **** Returns:  none
+ 491:src/hd44780.c **** *************************************************************************/
+ 492:src/hd44780.c **** void lcd_goto(uint8_t pos)
+ 493:src/hd44780.c ****   {
+ 235               		.loc 1 493 0
+ 236               		.cfi_startproc
+ 237               	.LVL9:
+ 238               	/* prologue: function */
+ 239               	/* frame size = 0 */
+ 240               	/* stack size = 0 */
+ 241               	.L__stack_usage = 0
+ 494:src/hd44780.c ****     lcd_command((1<<LCD_DDRAM)+pos);
+ 242               		.loc 1 494 0
+ 243 00be 8058      		subi r24,lo8(-(-128))
+ 244               	.LVL10:
+ 245 00c0 0C94 0000 		jmp lcd_command
+ 246               	.LVL11:
+ 247               		.cfi_endproc
+ 248               	.LFE7:
+ 250               	.global	lcd_gotoxy
+ 252               	lcd_gotoxy:
+ 253               	.LFB8:
+ 495:src/hd44780.c ****   }
+ 496:src/hd44780.c ****   
+ 497:src/hd44780.c **** void lcd_gotoxy(uint8_t x, uint8_t y)
+ 498:src/hd44780.c ****   {
+ 254               		.loc 1 498 0
+ 255               		.cfi_startproc
+ 256               	.LVL12:
+ 257               	/* prologue: function */
+ 258               	/* frame size = 0 */
+ 259               	/* stack size = 0 */
+ 260               	.L__stack_usage = 0
+ 499:src/hd44780.c **** 	register uint8_t DDRAMAddr;
+ 500:src/hd44780.c **** 	// remap lines into proper order
+ 501:src/hd44780.c **** 	switch(y)
+ 261               		.loc 1 501 0
+ 262 00c4 6230      		cpi r22,lo8(2)
+ 263 00c6 01F0      		breq .L30
+ 264 00c8 6330      		cpi r22,lo8(3)
+ 265 00ca 01F0      		breq .L31
+ 266 00cc 6130      		cpi r22,lo8(1)
+ 267 00ce 01F4      		brne .L29
+ 502:src/hd44780.c **** 	{
+ 503:src/hd44780.c **** 	case 0: DDRAMAddr = LCD_LINE0_DDRAMADDR+x; break;
+ 504:src/hd44780.c **** 	case 1: DDRAMAddr = LCD_LINE1_DDRAMADDR+x; break;
+ 268               		.loc 1 504 0
+ 269 00d0 805C      		subi r24,lo8(-(64))
+ 270               	.LVL13:
+ 271 00d2 00C0      		rjmp .L29
+ 272               	.LVL14:
+ 273               	.L30:
+ 505:src/hd44780.c **** 	case 2: DDRAMAddr = LCD_LINE2_DDRAMADDR+x; break;
+ 274               		.loc 1 505 0
+ 275 00d4 8C5E      		subi r24,lo8(-(20))
+ 276               	.LVL15:
+ 277 00d6 00C0      		rjmp .L29
+ 278               	.LVL16:
+ 279               	.L31:
+ 506:src/hd44780.c **** 	case 3: DDRAMAddr = LCD_LINE3_DDRAMADDR+x; break;
+ 280               		.loc 1 506 0
+ 281 00d8 8C5A      		subi r24,lo8(-(84))
+ 282               	.LVL17:
+ 283               	.L29:
+ 507:src/hd44780.c **** 	default: DDRAMAddr = LCD_LINE0_DDRAMADDR+x;
+ 508:src/hd44780.c **** 	}
+ 509:src/hd44780.c **** 	// set data address
+ 510:src/hd44780.c **** 	lcd_command(1<<LCD_DDRAM | DDRAMAddr);
+ 284               		.loc 1 510 0
+ 285 00da 8068      		ori r24,lo8(-128)
+ 286               	.LVL18:
+ 287 00dc 0C94 0000 		jmp lcd_command
+ 288               	.LVL19:
+ 289               		.cfi_endproc
+ 290               	.LFE8:
+ 292               	.global	lcd_clrscr
+ 294               	lcd_clrscr:
+ 295               	.LFB9:
+ 511:src/hd44780.c ****   }
+ 512:src/hd44780.c **** 
+ 513:src/hd44780.c **** 
+ 514:src/hd44780.c **** /*************************************************************************
+ 515:src/hd44780.c **** Clear screen
+ 516:src/hd44780.c **** Input:    none
+ 517:src/hd44780.c **** Returns:  none
+ 518:src/hd44780.c **** *************************************************************************/
+ 519:src/hd44780.c **** void lcd_clrscr(void)
+ 520:src/hd44780.c ****   {
+ 296               		.loc 1 520 0
+ 297               		.cfi_startproc
+ 298               	/* prologue: function */
+ 299               	/* frame size = 0 */
+ 300               	/* stack size = 0 */
+ 301               	.L__stack_usage = 0
+ 521:src/hd44780.c ****     lcd_command(1<<LCD_CLR);
+ 302               		.loc 1 521 0
+ 303 00e0 81E0      		ldi r24,lo8(1)
+ 304 00e2 0C94 0000 		jmp lcd_command
+ 305               	.LVL20:
+ 306               		.cfi_endproc
+ 307               	.LFE9:
+ 309               	.global	lcd_home
+ 311               	lcd_home:
+ 312               	.LFB10:
+ 522:src/hd44780.c ****   }
+ 523:src/hd44780.c **** 
+ 524:src/hd44780.c **** 
+ 525:src/hd44780.c **** /*************************************************************************
+ 526:src/hd44780.c **** Return home
+ 527:src/hd44780.c **** Input:    none
+ 528:src/hd44780.c **** Returns:  none
+ 529:src/hd44780.c **** *************************************************************************/
+ 530:src/hd44780.c **** void lcd_home(void)
+ 531:src/hd44780.c ****   {
+ 313               		.loc 1 531 0
+ 314               		.cfi_startproc
+ 315               	/* prologue: function */
+ 316               	/* frame size = 0 */
+ 317               	/* stack size = 0 */
+ 318               	.L__stack_usage = 0
+ 532:src/hd44780.c ****     lcd_command(1<<LCD_HOME);
+ 319               		.loc 1 532 0
+ 320 00e6 82E0      		ldi r24,lo8(2)
+ 321 00e8 0C94 0000 		jmp lcd_command
+ 322               	.LVL21:
+ 323               		.cfi_endproc
+ 324               	.LFE10:
+ 326               	.global	lcd_putc
+ 328               	lcd_putc:
+ 329               	.LFB11:
+ 533:src/hd44780.c ****   }
+ 534:src/hd44780.c **** 
+ 535:src/hd44780.c **** 
+ 536:src/hd44780.c **** /*************************************************************************
+ 537:src/hd44780.c **** Display character
+ 538:src/hd44780.c **** Input:    character to be displayed
+ 539:src/hd44780.c **** Returns:  none
+ 540:src/hd44780.c **** *************************************************************************/
+ 541:src/hd44780.c **** void lcd_putc(char c)
+ 542:src/hd44780.c ****   {
+ 330               		.loc 1 542 0
+ 331               		.cfi_startproc
+ 332               	.LVL22:
+ 333               	/* prologue: function */
+ 334               	/* frame size = 0 */
+ 335               	/* stack size = 0 */
+ 336               	.L__stack_usage = 0
+ 543:src/hd44780.c ****     lcd_write(c,1);
+ 337               		.loc 1 543 0
+ 338 00ec 61E0      		ldi r22,lo8(1)
+ 339 00ee 0C94 0000 		jmp lcd_write
+ 340               	.LVL23:
+ 341               		.cfi_endproc
+ 342               	.LFE11:
+ 344               	.global	lcd_puts
+ 346               	lcd_puts:
+ 347               	.LFB12:
+ 544:src/hd44780.c ****   }
+ 545:src/hd44780.c **** 
+ 546:src/hd44780.c **** 
+ 547:src/hd44780.c **** /*************************************************************************
+ 548:src/hd44780.c **** Display string
+ 549:src/hd44780.c **** Input:    string to be displayed
+ 550:src/hd44780.c **** Returns:  none
+ 551:src/hd44780.c **** *************************************************************************/
+ 552:src/hd44780.c **** void lcd_puts(const char *s)
+ 553:src/hd44780.c ****   {
+ 348               		.loc 1 553 0
+ 349               		.cfi_startproc
+ 350               	.LVL24:
+ 351 00f2 CF93      		push r28
+ 352               	.LCFI2:
+ 353               		.cfi_def_cfa_offset 3
+ 354               		.cfi_offset 28, -2
+ 355 00f4 DF93      		push r29
+ 356               	.LCFI3:
+ 357               		.cfi_def_cfa_offset 4
+ 358               		.cfi_offset 29, -3
+ 359               	/* prologue: function */
+ 360               	/* frame size = 0 */
+ 361               	/* stack size = 2 */
+ 362               	.L__stack_usage = 2
+ 363 00f6 EC01      		movw r28,r24
+ 364               	.LVL25:
+ 365               	.L37:
+ 554:src/hd44780.c ****     register char c;
+ 555:src/hd44780.c **** 
+ 556:src/hd44780.c ****     while ((c=*s++)) 
+ 366               		.loc 1 556 0 discriminator 1
+ 367 00f8 8991      		ld r24,Y+
+ 368               	.LVL26:
+ 369 00fa 8823      		tst r24
+ 370 00fc 01F0      		breq .L39
+ 557:src/hd44780.c ****       lcd_putc(c);
+ 371               		.loc 1 557 0
+ 372 00fe 0E94 0000 		call lcd_putc
+ 373               	.LVL27:
+ 374 0102 00C0      		rjmp .L37
+ 375               	.LVL28:
+ 376               	.L39:
+ 377               	/* epilogue start */
+ 558:src/hd44780.c ****   }
+ 378               		.loc 1 558 0
+ 379 0104 DF91      		pop r29
+ 380 0106 CF91      		pop r28
+ 381               	.LVL29:
+ 382 0108 0895      		ret
+ 383               		.cfi_endproc
+ 384               	.LFE12:
+ 386               	.global	lcd_puts_P
+ 388               	lcd_puts_P:
+ 389               	.LFB13:
+ 559:src/hd44780.c **** 
+ 560:src/hd44780.c **** 
+ 561:src/hd44780.c **** /*************************************************************************
+ 562:src/hd44780.c **** Display string from flash
+ 563:src/hd44780.c **** Input:    string to be displayed
+ 564:src/hd44780.c **** Returns:  none
+ 565:src/hd44780.c **** *************************************************************************/
+ 566:src/hd44780.c **** void lcd_puts_P(const char *progmem_s)
+ 567:src/hd44780.c ****   {
+ 390               		.loc 1 567 0
+ 391               		.cfi_startproc
+ 392               	.LVL30:
+ 393 010a CF93      		push r28
+ 394               	.LCFI4:
+ 395               		.cfi_def_cfa_offset 3
+ 396               		.cfi_offset 28, -2
+ 397 010c DF93      		push r29
+ 398               	.LCFI5:
+ 399               		.cfi_def_cfa_offset 4
+ 400               		.cfi_offset 29, -3
+ 401               	/* prologue: function */
+ 402               	/* frame size = 0 */
+ 403               	/* stack size = 2 */
+ 404               	.L__stack_usage = 2
+ 405 010e FC01      		movw r30,r24
+ 406               	.LVL31:
+ 407               	.L41:
+ 408               	.LBB2:
+ 568:src/hd44780.c ****     register char c;
+ 569:src/hd44780.c **** 
+ 570:src/hd44780.c ****     while ((c=pgm_read_byte(progmem_s++))) 
+ 409               		.loc 1 570 0 discriminator 1
+ 410               	/* #APP */
+ 411               	 ;  570 "src/hd44780.c" 1
+ 412 0110 8491      		lpm r24, Z
+ 413               		
+ 414               	 ;  0 "" 2
+ 415               	.LVL32:
+ 416               	/* #NOAPP */
+ 417 0112 EF01      		movw r28,r30
+ 418 0114 2196      		adiw r28,1
+ 419               	.LVL33:
+ 420               	.LBE2:
+ 421 0116 8823      		tst r24
+ 422 0118 01F0      		breq .L43
+ 571:src/hd44780.c ****       lcd_putc(c);
+ 423               		.loc 1 571 0
+ 424 011a 0E94 0000 		call lcd_putc
+ 425               	.LVL34:
+ 426 011e FE01      		movw r30,r28
+ 427 0120 00C0      		rjmp .L41
+ 428               	.LVL35:
+ 429               	.L43:
+ 430               	/* epilogue start */
+ 572:src/hd44780.c ****   }
+ 431               		.loc 1 572 0
+ 432 0122 DF91      		pop r29
+ 433 0124 CF91      		pop r28
+ 434               	.LVL36:
+ 435 0126 0895      		ret
+ 436               		.cfi_endproc
+ 437               	.LFE13:
+ 439               	.global	lcd_init
+ 441               	lcd_init:
+ 442               	.LFB14:
+ 573:src/hd44780.c **** 
+ 574:src/hd44780.c **** /*************************************************************************
+ 575:src/hd44780.c **** Initialize display
+ 576:src/hd44780.c **** Input:    none
+ 577:src/hd44780.c **** Returns:  none
+ 578:src/hd44780.c **** *************************************************************************/
+ 579:src/hd44780.c **** void lcd_init(void)
+ 580:src/hd44780.c ****   {
+ 443               		.loc 1 580 0
+ 444               		.cfi_startproc
+ 445               	/* prologue: function */
+ 446               	/* frame size = 0 */
+ 447               	/* stack size = 0 */
+ 448               	.L__stack_usage = 0
+ 449               	.LBB5:
+ 450               	.LBB6:
+ 239:src/hd44780.c ****                 DDR(LCD_E_PORT)|=_BV(LCD_E_PIN);
+ 451               		.loc 1 239 0
+ 452 0128 239A      		sbi 0x4,3
+ 453               	.LBE6:
+ 454               	.LBE5:
+ 581:src/hd44780.c ****     //Set All Pins as Output
+ 582:src/hd44780.c ****     lcd_e_ddr_high();
+ 583:src/hd44780.c ****     lcd_rs_ddr_high();
+ 455               		.loc 1 583 0
+ 456 012a 249A      		sbi 0x4,4
+ 584:src/hd44780.c ****     #if RW_LINE_IMPLEMENTED==1
+ 585:src/hd44780.c ****       lcd_rw_ddr_high();
+ 586:src/hd44780.c ****     #endif
+ 587:src/hd44780.c ****     lcd_db7_ddr_high();
+ 457               		.loc 1 587 0
+ 458 012c 579A      		sbi 0xa,7
+ 588:src/hd44780.c ****     lcd_db6_ddr_high();
+ 459               		.loc 1 588 0
+ 460 012e 209A      		sbi 0x4,0
+ 589:src/hd44780.c ****     lcd_db5_ddr_high();
+ 461               		.loc 1 589 0
+ 462 0130 219A      		sbi 0x4,1
+ 590:src/hd44780.c ****     lcd_db4_ddr_high();
+ 463               		.loc 1 590 0
+ 464 0132 259A      		sbi 0x4,5
+ 591:src/hd44780.c ****     #if LCD_BITS==8
+ 592:src/hd44780.c ****       lcd_db3_ddr_high();
+ 593:src/hd44780.c ****       lcd_db2_ddr_high();
+ 594:src/hd44780.c ****       lcd_db1_ddr_high();
+ 595:src/hd44780.c ****       lcd_db0_ddr_high();
+ 596:src/hd44780.c ****     #endif
+ 597:src/hd44780.c **** 
+ 598:src/hd44780.c ****     //Set All Control Lines Low
+ 599:src/hd44780.c ****     lcd_e_port_low();
+ 465               		.loc 1 599 0
+ 466 0134 0E94 0000 		call lcd_e_port_low
+ 467               	.LVL37:
+ 600:src/hd44780.c ****     lcd_rs_port_low();
+ 468               		.loc 1 600 0
+ 469 0138 2C98      		cbi 0x5,4
+ 601:src/hd44780.c ****     #if RW_LINE_IMPLEMENTED==1
+ 602:src/hd44780.c ****       lcd_rw_port_low();
+ 603:src/hd44780.c ****     #endif
+ 604:src/hd44780.c **** 
+ 605:src/hd44780.c ****     //Set All Data Lines High
+ 606:src/hd44780.c ****     lcd_db7_port_high();
+ 470               		.loc 1 606 0
+ 471 013a 5F9A      		sbi 0xb,7
+ 607:src/hd44780.c ****     lcd_db6_port_high();
+ 472               		.loc 1 607 0
+ 473 013c 289A      		sbi 0x5,0
+ 608:src/hd44780.c ****     lcd_db5_port_high();
+ 474               		.loc 1 608 0
+ 475 013e 299A      		sbi 0x5,1
+ 609:src/hd44780.c ****     lcd_db4_port_high();
+ 476               		.loc 1 609 0
+ 477 0140 2D9A      		sbi 0x5,5
+ 610:src/hd44780.c ****     #if LCD_BITS==8
+ 611:src/hd44780.c ****       lcd_db3_port_high();
+ 612:src/hd44780.c ****       lcd_db2_port_high();
+ 613:src/hd44780.c ****       lcd_db1_port_high();
+ 614:src/hd44780.c ****       lcd_db0_port_high();
+ 615:src/hd44780.c ****     #endif
+ 616:src/hd44780.c **** 
+ 617:src/hd44780.c ****     //Startup Delay
+ 618:src/hd44780.c ****     Delay_ms(DELAY_RESET);
+ 478               		.loc 1 618 0
+ 479 0142 8FE5      		ldi r24,lo8(-5537)
+ 480 0144 9AEE      		ldi r25,hi8(-5537)
+ 481 0146 0197      		1: sbiw r24,1
+ 482 0148 01F4      		brne 1b
+ 483 014a 00C0      		rjmp .
+ 484 014c 0000      		nop
+ 619:src/hd44780.c **** 
+ 620:src/hd44780.c ****     //Initialize Display
+ 621:src/hd44780.c ****     lcd_db7_port_low();
+ 485               		.loc 1 621 0
+ 486 014e 5F98      		cbi 0xb,7
+ 622:src/hd44780.c ****     lcd_db6_port_low();
+ 487               		.loc 1 622 0
+ 488 0150 2898      		cbi 0x5,0
+ 623:src/hd44780.c ****     Delay_ns(100);
+ 489               		.loc 1 623 0
+ 490 0152 00C0      		rjmp .
+ 624:src/hd44780.c ****     lcd_e_port_high();
+ 491               		.loc 1 624 0
+ 492 0154 0E94 0000 		call lcd_e_port_high
+ 493               	.LVL38:
+ 625:src/hd44780.c ****     Delay_ns(500);
+ 494               		.loc 1 625 0
+ 495 0158 92E0      		ldi r25,lo8(2)
+ 496 015a 9A95      		1: dec r25
+ 497 015c 01F4      		brne 1b
+ 498 015e 00C0      		rjmp .
+ 626:src/hd44780.c ****     lcd_e_port_low();
+ 499               		.loc 1 626 0
+ 500 0160 0E94 0000 		call lcd_e_port_low
+ 501               	.LVL39:
+ 627:src/hd44780.c **** 
+ 628:src/hd44780.c ****     Delay_us(4100);
+ 502               		.loc 1 628 0
+ 503 0164 8FE0      		ldi r24,lo8(16399)
+ 504 0166 90E4      		ldi r25,hi8(16399)
+ 505 0168 0197      		1: sbiw r24,1
+ 506 016a 01F4      		brne 1b
+ 507 016c 00C0      		rjmp .
+ 508 016e 0000      		nop
+ 629:src/hd44780.c **** 
+ 630:src/hd44780.c ****     lcd_e_port_high();
+ 509               		.loc 1 630 0
+ 510 0170 0E94 0000 		call lcd_e_port_high
+ 511               	.LVL40:
+ 631:src/hd44780.c ****     Delay_ns(500);
+ 512               		.loc 1 631 0
+ 513 0174 92E0      		ldi r25,lo8(2)
+ 514 0176 9A95      		1: dec r25
+ 515 0178 01F4      		brne 1b
+ 516 017a 00C0      		rjmp .
+ 632:src/hd44780.c ****     lcd_e_port_low();
+ 517               		.loc 1 632 0
+ 518 017c 0E94 0000 		call lcd_e_port_low
+ 519               	.LVL41:
+ 633:src/hd44780.c **** 
+ 634:src/hd44780.c ****     Delay_us(100);
+ 520               		.loc 1 634 0
+ 521 0180 8FE8      		ldi r24,lo8(399)
+ 522 0182 91E0      		ldi r25,hi8(399)
+ 523 0184 0197      		1: sbiw r24,1
+ 524 0186 01F4      		brne 1b
+ 525 0188 00C0      		rjmp .
+ 526 018a 0000      		nop
+ 635:src/hd44780.c **** 
+ 636:src/hd44780.c ****     lcd_e_port_high();
+ 527               		.loc 1 636 0
+ 528 018c 0E94 0000 		call lcd_e_port_high
+ 529               	.LVL42:
+ 637:src/hd44780.c ****     Delay_ns(500);
+ 530               		.loc 1 637 0
+ 531 0190 92E0      		ldi r25,lo8(2)
+ 532 0192 9A95      		1: dec r25
+ 533 0194 01F4      		brne 1b
+ 534 0196 00C0      		rjmp .
+ 638:src/hd44780.c ****     lcd_e_port_low();
+ 535               		.loc 1 638 0
+ 536 0198 0E94 0000 		call lcd_e_port_low
+ 537               	.LVL43:
+ 639:src/hd44780.c **** 
+ 640:src/hd44780.c ****     Delay_us(40);
+ 538               		.loc 1 640 0
+ 539 019c 85ED      		ldi r24,lo8(-43)
+ 540 019e 8A95      		1: dec r24
+ 541 01a0 01F4      		brne 1b
+ 542 01a2 0000      		nop
+ 641:src/hd44780.c **** 
+ 642:src/hd44780.c ****     //Init differs between 4-bit and 8-bit from here
+ 643:src/hd44780.c ****     #if (LCD_BITS==4)
+ 644:src/hd44780.c ****       lcd_db4_port_low();
+ 543               		.loc 1 644 0
+ 544 01a4 2D98      		cbi 0x5,5
+ 645:src/hd44780.c ****       Delay_ns(100);
+ 545               		.loc 1 645 0
+ 546 01a6 00C0      		rjmp .
+ 646:src/hd44780.c ****       lcd_e_port_high();
+ 547               		.loc 1 646 0
+ 548 01a8 0E94 0000 		call lcd_e_port_high
+ 549               	.LVL44:
+ 647:src/hd44780.c ****       Delay_ns(500);
+ 550               		.loc 1 647 0
+ 551 01ac 92E0      		ldi r25,lo8(2)
+ 552 01ae 9A95      		1: dec r25
+ 553 01b0 01F4      		brne 1b
+ 554 01b2 00C0      		rjmp .
+ 648:src/hd44780.c ****       lcd_e_port_low();
+ 555               		.loc 1 648 0
+ 556 01b4 0E94 0000 		call lcd_e_port_low
+ 557               	.LVL45:
+ 649:src/hd44780.c ****       Delay_us(40);
+ 558               		.loc 1 649 0
+ 559 01b8 85ED      		ldi r24,lo8(-43)
+ 560 01ba 8A95      		1: dec r24
+ 561 01bc 01F4      		brne 1b
+ 562 01be 0000      		nop
+ 650:src/hd44780.c **** 
+ 651:src/hd44780.c ****       lcd_db4_port_low();
+ 563               		.loc 1 651 0
+ 564 01c0 2D98      		cbi 0x5,5
+ 652:src/hd44780.c ****       Delay_ns(100);
+ 565               		.loc 1 652 0
+ 566 01c2 00C0      		rjmp .
+ 653:src/hd44780.c ****       lcd_e_port_high();
+ 567               		.loc 1 653 0
+ 568 01c4 0E94 0000 		call lcd_e_port_high
+ 569               	.LVL46:
+ 654:src/hd44780.c ****       Delay_ns(500);
+ 570               		.loc 1 654 0
+ 571 01c8 92E0      		ldi r25,lo8(2)
+ 572 01ca 9A95      		1: dec r25
+ 573 01cc 01F4      		brne 1b
+ 574 01ce 00C0      		rjmp .
+ 655:src/hd44780.c ****       lcd_e_port_low();
+ 575               		.loc 1 655 0
+ 576 01d0 0E94 0000 		call lcd_e_port_low
+ 577               	.LVL47:
+ 656:src/hd44780.c ****       Delay_ns(500);
+ 578               		.loc 1 656 0
+ 579 01d4 82E0      		ldi r24,lo8(2)
+ 580 01d6 8A95      		1: dec r24
+ 581 01d8 01F4      		brne 1b
+ 582 01da 00C0      		rjmp .
+ 657:src/hd44780.c **** 
+ 658:src/hd44780.c ****       #if (LCD_DISPLAYS==1)
+ 659:src/hd44780.c ****         if (LCD_DISPLAY_LINES>1)
+ 660:src/hd44780.c ****           lcd_db7_port_high();
+ 583               		.loc 1 660 0
+ 584 01dc 5F9A      		sbi 0xb,7
+ 661:src/hd44780.c ****       #else
+ 662:src/hd44780.c ****         unsigned char c;
+ 663:src/hd44780.c ****         switch (ActiveDisplay)
+ 664:src/hd44780.c ****           {
+ 665:src/hd44780.c ****             case 1 : c=LCD_DISPLAY_LINES; break;
+ 666:src/hd44780.c ****             case 2 : c=LCD_DISPLAY2_LINES; break;
+ 667:src/hd44780.c ****             #if (LCD_DISPLAYS>=3)
+ 668:src/hd44780.c ****             case 3 : c=LCD_DISPLAY3_LINES; break;
+ 669:src/hd44780.c ****             #endif
+ 670:src/hd44780.c ****             #if (LCD_DISPLAYS==4)
+ 671:src/hd44780.c ****             case 4 : c=LCD_DISPLAY4_LINES; break;
+ 672:src/hd44780.c ****             #endif
+ 673:src/hd44780.c ****           }
+ 674:src/hd44780.c ****         if (c>1)
+ 675:src/hd44780.c ****           lcd_db7_port_high();
+ 676:src/hd44780.c ****       #endif
+ 677:src/hd44780.c **** 
+ 678:src/hd44780.c ****       Delay_ns(100);
+ 585               		.loc 1 678 0
+ 586 01de 00C0      		rjmp .
+ 679:src/hd44780.c ****       lcd_e_port_high();
+ 587               		.loc 1 679 0
+ 588 01e0 0E94 0000 		call lcd_e_port_high
+ 589               	.LVL48:
+ 680:src/hd44780.c ****       Delay_ns(500);
+ 590               		.loc 1 680 0
+ 591 01e4 92E0      		ldi r25,lo8(2)
+ 592 01e6 9A95      		1: dec r25
+ 593 01e8 01F4      		brne 1b
+ 594 01ea 00C0      		rjmp .
+ 681:src/hd44780.c ****       lcd_e_port_low();
+ 595               		.loc 1 681 0
+ 596 01ec 0E94 0000 		call lcd_e_port_low
+ 597               	.LVL49:
+ 682:src/hd44780.c ****       Delay_us(40);
+ 598               		.loc 1 682 0
+ 599 01f0 85ED      		ldi r24,lo8(-43)
+ 600 01f2 8A95      		1: dec r24
+ 601 01f4 01F4      		brne 1b
+ 602 01f6 0000      		nop
+ 683:src/hd44780.c ****     #else
+ 684:src/hd44780.c ****       #if (LCD_DISPLAYS==1)
+ 685:src/hd44780.c ****         if (LCD_DISPLAY_LINES<2)
+ 686:src/hd44780.c ****           lcd_db3_port_low();
+ 687:src/hd44780.c ****       #else
+ 688:src/hd44780.c ****         unsigned char c;
+ 689:src/hd44780.c ****         switch (ActiveDisplay)
+ 690:src/hd44780.c ****           {
+ 691:src/hd44780.c ****             case 1 : c=LCD_DISPLAY_LINES; break;
+ 692:src/hd44780.c ****             case 2 : c=LCD_DISPLAY2_LINES; break;
+ 693:src/hd44780.c ****             #if (LCD_DISPLAYS>=3)
+ 694:src/hd44780.c ****             case 3 : c=LCD_DISPLAY3_LINES; break;
+ 695:src/hd44780.c ****             #endif
+ 696:src/hd44780.c ****             #if (LCD_DISPLAYS==4)
+ 697:src/hd44780.c ****             case 4 : c=LCD_DISPLAY4_LINES; break;
+ 698:src/hd44780.c ****             #endif
+ 699:src/hd44780.c ****           }
+ 700:src/hd44780.c ****         if (c<2)
+ 701:src/hd44780.c ****           lcd_db3_port_low();
+ 702:src/hd44780.c ****       #endif
+ 703:src/hd44780.c **** 
+ 704:src/hd44780.c ****       lcd_db2_port_low();
+ 705:src/hd44780.c ****       Delay_ns(100);
+ 706:src/hd44780.c ****       lcd_e_port_high();
+ 707:src/hd44780.c ****       Delay_ns(500);
+ 708:src/hd44780.c ****       lcd_e_port_low();
+ 709:src/hd44780.c ****       Delay_us(40);
+ 710:src/hd44780.c ****     #endif
+ 711:src/hd44780.c **** 
+ 712:src/hd44780.c ****     //Display Off
+ 713:src/hd44780.c ****     lcd_command(_BV(LCD_DISPLAYMODE));
+ 603               		.loc 1 713 0
+ 604 01f8 88E0      		ldi r24,lo8(8)
+ 605 01fa 0E94 0000 		call lcd_command
+ 606               	.LVL50:
+ 714:src/hd44780.c **** 
+ 715:src/hd44780.c ****     //Display Clear
+ 716:src/hd44780.c ****     lcd_clrscr();
+ 607               		.loc 1 716 0
+ 608 01fe 0E94 0000 		call lcd_clrscr
+ 609               	.LVL51:
+ 717:src/hd44780.c **** 
+ 718:src/hd44780.c ****     //Entry Mode Set
+ 719:src/hd44780.c ****     lcd_command(_BV(LCD_ENTRY_MODE) | _BV(LCD_ENTRY_INC));
+ 610               		.loc 1 719 0
+ 611 0202 86E0      		ldi r24,lo8(6)
+ 612 0204 0E94 0000 		call lcd_command
+ 613               	.LVL52:
+ 720:src/hd44780.c **** 
+ 721:src/hd44780.c ****     //Display On
+ 722:src/hd44780.c ****     lcd_command(_BV(LCD_DISPLAYMODE) | _BV(LCD_DISPLAYMODE_ON));
+ 614               		.loc 1 722 0
+ 615 0208 8CE0      		ldi r24,lo8(12)
+ 616 020a 0C94 0000 		jmp lcd_command
+ 617               	.LVL53:
+ 618               		.cfi_endproc
+ 619               	.LFE14:
+ 621               	.Letext0:
+ 622               		.file 2 "/usr/lib/avr/include/stdint.h"
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 hd44780.c
+     /tmp/ccPyh8kX.s:2      *ABS*:000000000000003e __SP_H__
+     /tmp/ccPyh8kX.s:3      *ABS*:000000000000003d __SP_L__
+     /tmp/ccPyh8kX.s:4      *ABS*:000000000000003f __SREG__
+     /tmp/ccPyh8kX.s:5      *ABS*:0000000000000000 __tmp_reg__
+     /tmp/ccPyh8kX.s:6      *ABS*:0000000000000001 __zero_reg__
+     /tmp/ccPyh8kX.s:11     .text:0000000000000000 lcd_e_port_low
+     /tmp/ccPyh8kX.s:27     .text:0000000000000004 lcd_e_port_high
+     /tmp/ccPyh8kX.s:42     .text:0000000000000008 lcd_write
+     /tmp/ccPyh8kX.s:215    .text:00000000000000b8 lcd_command
+     /tmp/ccPyh8kX.s:233    .text:00000000000000be lcd_goto
+     /tmp/ccPyh8kX.s:252    .text:00000000000000c4 lcd_gotoxy
+     /tmp/ccPyh8kX.s:294    .text:00000000000000e0 lcd_clrscr
+     /tmp/ccPyh8kX.s:311    .text:00000000000000e6 lcd_home
+     /tmp/ccPyh8kX.s:328    .text:00000000000000ec lcd_putc
+     /tmp/ccPyh8kX.s:346    .text:00000000000000f2 lcd_puts
+     /tmp/ccPyh8kX.s:388    .text:000000000000010a lcd_puts_P
+     /tmp/ccPyh8kX.s:441    .text:0000000000000128 lcd_init
+
+NO UNDEFINED SYMBOLS
