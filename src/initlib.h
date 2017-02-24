@@ -17,27 +17,33 @@
 #define timer2_counting	TCNT2
 #define bldc_output OCR1B
 // how many bldc rotation you use to get the rpm, 64 is max
-#define rotation_sampling 2
+#define rotation_sampling 4
 // TCNT0 limit, the max is 255 (8bit, start from 0)
 #define timer0_counting_limit (4 * rotation_sampling)
 //#define UART_BUFFER 10
 #define UART_BAUD_RATE 9600
 
+double total_timer0 = 0;
+double timer0_counting_temp = 0;
+double timer0_overflow = 0;
+double timer0_overflow_temp = 0;
+double timer2_temp = 0;
 double timer2_overflow = 0;
+double timer2_overflow_temp = 0;
+double timer2_counting_temp = 0;
 char buffer[33];
 bool get_rawrpm = false;
 bool get_rpm = false;
 bool display = false;
 bool set_pid = false;
+bool flags = false;
 double data_sampling_time = 0;
 double sampling_rate = 0;
 double error = 0, last_error = 0;
 double rpm = 1000, last_rpm = 0;
 double desired_rpm = 8000;
-double timer2_overflow_temp = 0;
 double time_stamp = 0;
 double hertz = 0;
-double timer2_temp = 0;
 uint16_t c = 0;
 uint16_t i = 0, j = 0;
 unsigned char line[10];
