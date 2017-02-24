@@ -61,9 +61,10 @@ int main(void){
 		timer0_counting = 0;
 		timer2_overflow = 0;
 		timer2_counting = 0;
-		while((timer0_counting <= timer0_counting_limit)){};
+		while((timer0_counting <= timer0_counting_limit));
 		timer2_temp = timer2_counting;
 		timer2_overflow_temp = timer2_overflow;
+		/*1
 		while(sampling_rate <10){
 			sampling_rate = (double) timer2_overflow * 256 + (double)timer2_counting;
 			sampling_rate = (double) sampling_rate * 5E-4/(rotation_sampling);
@@ -72,6 +73,7 @@ int main(void){
 			//serial_display(timer2_overflow);
 			//uart_putc(10);
 		}	
+		1*/
 		// get total counting for TIMER2
 		data_sampling_time = (double) timer2_overflow_temp * 256 + (double)timer2_temp;
 		// convert TIMER2 count to millisecond, for each rotation
@@ -85,11 +87,12 @@ int main(void){
 		// convert to rpm
 		rpm = (double) 60E3/data_sampling_time;
 		// Get hertz (1 rot = 4 Hz)
-		hertz = 4 * (rpm/60);
+		//hertz = 4 * (rpm/60);
 		
+		serial_display(data_sampling_rate);
+		uart_putc(32);
+
 		serial_display(rpm);
-		uart_putc(9);
-		serial_display(error);
 		uart_putc(10);
 		
 		error = desired_rpm - rpm;

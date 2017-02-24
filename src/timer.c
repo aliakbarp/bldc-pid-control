@@ -36,7 +36,7 @@ void timer1_init(void){
 }
 
 void timer2_init(void){
-	// No prescalling
+	// Prescalling 8
 	TCCR2B|=(1<<CS21);
 	// Enable overflow interrupt 
 	TIMSK2|=(1<<TOIE2);

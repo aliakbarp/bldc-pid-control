@@ -19,7 +19,7 @@
 // how many bldc rotation you use to get the rpm, 64 is max
 #define rotation_sampling 2
 // TCNT0 limit, the max is 255 (8bit, start from 0)
-#define timer0_counting_limit (4*rotation_sampling)
+#define timer0_counting_limit (4 * rotation_sampling)
 //#define UART_BUFFER 10
 #define UART_BAUD_RATE 9600
 
@@ -33,7 +33,7 @@ double data_sampling_time = 0;
 double sampling_rate = 0;
 double error = 0, last_error = 0;
 double rpm = 1000, last_rpm = 0;
-double desired_rpm = 5000;
+double desired_rpm = 8000;
 double timer2_overflow_temp = 0;
 double time_stamp = 0;
 double hertz = 0;
