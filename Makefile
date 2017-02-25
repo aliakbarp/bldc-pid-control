@@ -80,7 +80,7 @@ OBJDIR = .
 
 
 # List C source files here. (C dependencies are automatically generated.)
-SRC = $(TARGET).c src/hd44780.c src/pid.c src/timer.c src/interrupt.c src/interface.c src/uart.c
+SRC = $(TARGET).c src/hd44780.c src/timer.c src/interrupt.c src/interface.c src/uart.c
 
 # List C++ source files here. (C dependencies are automatically generated.)
 CPPSRC = 

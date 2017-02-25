@@ -18,10 +18,10 @@ void lcd_display(uint8_t x, uint8_t y, char buffer[33]){
 	#endif
 }
 
-void serial_display(double rpm){
+void serial_display(float rpm){
 	#if defined NEED_SERIAL
 		unsigned char arr[10];
-		snprintf(arr, sizeof(rpm)+3, "%.3f", rpm);
+		snprintf(arr, sizeof(rpm)+3, "%.1f", rpm);
 		for(int g=0; g<strlen(arr); g++){
 			//Send back to terminal
 			uart_putc((uint8_t)arr[g]);
@@ -29,7 +29,7 @@ void serial_display(double rpm){
 	#endif
 }
 
-void serial_rpm(double rpm, double hertz){
+void serial_rpm(float rpm, float hertz){
 	#if defined NEED_SERIAL
 		unsigned char arr[10];
 		snprintf(arr, sizeof(rpm)+3, "%.2f", rpm);

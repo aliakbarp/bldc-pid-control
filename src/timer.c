@@ -11,6 +11,7 @@
 
 #include <avr/io.h>
 #include <util/delay.h>
+#include <avr/interrupt.h>
 
 void timer0_init(void){
 	// T0, input for clock signal
